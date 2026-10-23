@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "market-crafting",
+  "name": "Dragon Gear Prices",
+  "version": "0.11.0",
+  "author": "Flavbest",
+  "kind": "external",
+  "run": {
+    "exe": "app/node/node.exe",
+    "args": [
+      "app/server.js"
+    ],
+    "hidden": true
+  },
+  "open": "http://127.0.0.1:7317/",
+  "stop": {
+    "post": "http://127.0.0.1:7317/api/quit",
+    "headers": {
+      "X-Flav": "1"
+    }
+  },
+  "health": {
+    "get": "http://127.0.0.1:7317/api/status"
+  },
+  "events": {
+    "version": 1,
+    "types": [
+      "market-summary",
+      "market-listings",
+      "item-stats",
+      "inventory"
+    ]
+  },
+  "permissions": {
+    "network": [
+      "a2-tracker.com",
+      "aion2.plaync.com",
+      "api-search.plaync.com",
+      "assets.playnccdn.com",
+      "open.er-api.com"
+    ]
+  },
+  "updates": {
+    "github": "Flavbestlol/Aion-2-market-and-crafting-plugin",
+    "asset": "market-crafting-<version>.zip"
+  }
+}

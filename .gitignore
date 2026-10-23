@@ -1,0 +1,13 @@
+# The player's own files: never in the repository
+settings.json
+settings.json.tmp
+data/
+captures/
+Private/
+*.pcap
+*.pcapng
+*.keys
+tls-keys*.log
+*.log
+# The Node.js runtime (tools\get-node.bat fetches it; the release zip carries it)
+app/node/

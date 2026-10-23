@@ -1,0 +1,321 @@
+'use strict';
+/* Dragon Gear Prices — local app. Serves the page on http://127.0.0.1:7317 (this PC only), refreshes prices on demand,
+   and while alerts are on, checks every hour and shows a Windows notification when one of your pieces turns cheap. */
+const http = require('http'), fs = require('fs'), path = require('path'), { execFile } = require('child_process');
+const C = require('./compute');
+const { signal } = require('./signal');
+const Slots = require('./slots');
+const Armory = require('./armory');
+const FX = require('./fx');
+const { Market } = require('./market');
+const { Inventory } = require('./inventory');
+const { Me } = require('./me');
+
+const PORT = 7317, HOST = '127.0.0.1';
+const UI = path.join(__dirname, 'ui');
+const NODE = process.execPath, SERVER_JS = __filename;
+const TASK = 'Flav Dragon Gear Prices (app)', OLD_TASK = 'Flav Dragon Gear Prices';
+const LOG = path.join(C.DATA, 'price-log.csv'), ALERT_STATE = path.join(C.DATA, 'alert-state.json'), ERR = path.join(C.DATA, 'errors.log');
+
+let settings = C.loadSettings();
+const market = new Market(path.join(C.DATA, 'market.json')); // the Exchange as the game saw it, from Flav-Toolkit
+const inventory = new Inventory(path.join(C.DATA, 'inventory.json')); // the bag, storage and warehouse, from Flav-Toolkit
+const me = new Me(path.join(C.DATA, 'me.json')); // who is playing (name, server, class), from Flav-Toolkit
+let data = null, report = null, busy = null, lastError = null, lastRefresh = 0, syncError = null, overlaySeq = 0; // overlaySeq: bumped by "Show in overlay"
+
+/* Money in the chosen currency: "$1,234", "€1,234", "1,234 SAR". */
+const cash = (v, m, d) => { if (v == null || !isFinite(v)) return '—'; const n = Number(v).toLocaleString('en-US', { minimumFractionDigits: d ?? (Math.abs(v) < 100 ? 2 : 0), maximumFractionDigits: d ?? (Math.abs(v) < 100 ? 2 : 0) }); return m.before ? m.sym + n : n + ' ' + m.sym; };
+const curOf = m => ({ code: m.code, sym: m.sym, before: m.before });
+
+const logErr = e => { lastError = e.message || String(e); try { fs.appendFileSync(ERR, new Date().toISOString() + ' ' + lastError + '\n'); } catch { /* ignore */ } };
+
+async function refresh({ force = false, quiet = false } = {}) {
+  if (busy) return;
+  busy = { step: 'Starting', done: 0, total: 1 }; lastError = null;
+  try {
+    data = await C.fetchAll(settings, (step, done, total) => { busy = { step, done, total }; }, { force });
+    if (settings.auto_sync && settings.character && settings.character.name) await syncGear(false);
+    busy = { step: 'Calculating', done: 0, total: 1 };
+    report = C.computeState(data, settings, market);
+    lastRefresh = Date.now();
+    writeLog();
+    if (quiet || settings.alerts) await checkAlerts(quiet);
+  } catch (e) { logErr(e); }
+  busy = null;
+}
+async function syncGear(fresh) {
+  const prev = busy; busy = { step: 'Reading your gear', done: 0, total: 1 };
+  try {
+    const r = await Armory.lookup(settings.character.name, settings.character.serverId, { fresh });
+    C.applySync(data, settings, r); syncError = null; C.saveSettings(settings);
+  } catch (e) { syncError = e.message; }
+  busy = prev;
+}
+function setServer(id) {
+  const sv = Armory.server(id); if (!sv) return false;
+  const changed = settings.server !== sv.id;
+  settings.server = sv.id; settings.server_name = sv.name + ' (' + sv.region.toUpperCase() + ', ' + sv.faction + ')'; settings.faction = sv.faction.toLowerCase();
+  return changed;
+}
+/* The game said who is playing (me.js). The character becomes the one to read gear for (as if typed in), and the class
+   follows the game unless one was picked by hand. The two events come within a moment of each other at login, so the
+   work waits a second and runs once. */
+let meTimer = null;
+function applyMe() {
+  clearTimeout(meTimer);
+  meTimer = setTimeout(async () => {
+    let moved = false, who = false;
+    if (me.known() && (settings.character.name !== me.name || Number(settings.character.serverId) !== me.serverId)) {
+      settings.character = { name: me.name, serverId: me.serverId };
+      moved = setServer(me.serverId); who = true;
+      settings.sync = null; // the gear read was another character's
+    }
+    if (settings.class_mode !== 'manual' && me.class && settings.class !== me.class) settings.class = me.class;
+    C.saveSettings(settings);
+    try {
+      if (moved) await refresh({});
+      else if (who && settings.auto_sync && data && !busy) await syncGear(true);
+    } catch (e) { logErr(e); }
+  }, 1000);
+}
+/* Everything the in-game overlay's Gear tab shows, small: one row per slot with its tiers' costs and verdict. */
+function gearNow() {
+  const m = FX.money(settings, C.DATA);
+  const out = { at: report ? report.generatedAt : null, busy, error: lastError, syncError, show: overlaySeq, cur: curOf(m), auto_sync: !!settings.auto_sync, class: settings.class, class_mode: settings.class_mode === 'manual' ? 'manual' : 'auto', me: me.known() ? { name: me.name, className: me.class || me.gameClass, level: me.level } : null, synced: !!(settings.sync && settings.sync.detected), character: settings.sync && settings.sync.profile ? { name: settings.sync.profile.name, className: settings.sync.profile.className, gearScore: settings.sync.profile.gearScore } : null, slots: [], total: { money: 0, kina: 0, n: 0 } };
+  if (!report) return out;
+  const perKina = report.rate.qunaPer10m / 1e7 * m.pack / m.quna;
+  for (const s of Slots.slotsFor(settings.class)) {
+    const p = report.pieces[s.gear]; if (!p) continue;
+    const r = Slots.rangeOf(settings.plan, s.id), v = signal(report, p, r.skip ? r.goal : r.have, r.goal);
+    const w = settings.sync && settings.sync.detected && settings.sync.detected[s.id];
+    // worn: the tier the gear read found in this slot; auto: the plan uses it (false = you set another tier by hand)
+    out.slots.push({ slot: s.id, group: s.group, label: s.id === 'SubHand' ? 'Guard' : p.label + (s.pair ? ' ' + s.n : ''), have: r.have, goal: r.goal, skip: r.skip,
+      icon: p.stages[r.goal - 1].icon, item: p.stages[r.goal - 1].name, wear: w ? { name: w.name, enchant: w.enchant, exceed: w.exceed, dragon: w.dragon, tier: w.tier } : null,
+      worn: w ? w.tier : null, auto: w ? w.tier === r.have : null,
+      tiers: p.stages.map(st => ({ tier: st.tier, name: st.name, icon: st.icon, kina: st.cost, money: st.cost == null ? null : st.cost * perKina })),
+      money: v.money, kina: v.kina, kind: v.kind, pct: v.pct, good: v.good });
+    if (v.kind !== 'done' && v.money != null) { out.total.money += v.money; out.total.kina += v.kina; out.total.n++; }
+  }
+  return out;
+}
+
+/* The shopping list plus what the page needs to show money, and whether Kina is cheap today. */
+function shoppingNow() {
+  const out = C.shopping(data, settings, market, inventory);
+  const m = FX.money(settings, C.DATA), rate = report && report.rate.qunaPer10m;
+  const series = (report && report.qunaSeries || []).filter(x => x != null).sort((a, b) => a - b);
+  const usual = series.length > 24 ? series[series.length >> 1] : null;
+  out.money = { qunaPer10m: rate, usualQunaPer10m: usual, ratePct: usual && rate ? (rate - usual) / usual * 100 : null, perKina: rate ? rate / 1e7 * m.pack / m.quna : null, eurPerKina: rate ? rate / 1e7 * m.eur / m.quna : null, ...curOf(m), pack: m.pack, quna: m.quna, eur: m.eur, fxAt: m.fxAt, fxSource: m.fxSource };
+  return out;
+}
+function recompute() {
+  if (!data) return;
+  try { report = C.computeState(data, settings, market); } catch (e) { logErr(e); }
+}
+
+function planVerdicts() {
+  if (!report) return [];
+  const out = [];
+  for (const s of Slots.slotsFor(settings.class)) {
+    const r = Slots.rangeOf(settings.plan, s.id), p = report.pieces[s.gear];
+    if (r.skip || !p) continue;
+    out.push({ slot: s, p, v: signal(report, p, r.have, r.goal) });
+  }
+  return out;
+}
+function writeLog() {
+  if (!settings.class) return;
+  const head = 'time,slot,from_tier,to_tier,kina,quna,money,currency,eur,usual_money,vs_usual_percent,verdict\n';
+  if (fs.existsSync(LOG)) { const first = fs.readFileSync(LOG, 'utf8').split('\n')[0].replace(/^\uFEFF/, ''); if (first + '\n' !== head) fs.renameSync(LOG, path.join(C.DATA, first.includes('slot,') ? 'price-log-v2.csv' : 'price-log-v1.csv')); }
+  if (!fs.existsSync(LOG)) fs.writeFileSync(LOG, '﻿' + head);
+  const t = new Date().toLocaleString('sv-SE'), r = (x, d) => (x == null ? '' : x.toFixed(d)), code = report.settings.money.code;
+  const rows = planVerdicts().map(({ slot, p, v }) => { const g = Slots.rangeOf(settings.plan, slot.id); return [t, p.label + (slot.pair ? ' ' + slot.n : ''), g.have, g.goal, r(v.kina, 0), r(v.quna, 0), r(v.money, 2), code, r(v.eur, 2), r(v.usual, 2), r(v.pct, 1), v.kind].join(','); });
+  if (rows.length) fs.appendFileSync(LOG, rows.join('\n') + '\n');
+}
+async function checkAlerts() {
+  let state = {};
+  try { state = JSON.parse(fs.readFileSync(ALERT_STATE, 'utf8')); } catch { /* first time */ }
+  const fresh = [], next = {};
+  for (const { slot, p, v } of planVerdicts()) {
+    const key = slot.id + ':' + JSON.stringify(Slots.rangeOf(settings.plan, slot.id));
+    next[key] = v.kind;
+    if (v.kind === 'cheap' && state[key] !== 'cheap') fresh.push(p.label + (slot.pair ? ' ' + slot.n : '') + ': ' + cash(v.money, report.settings.money, 0) + ' (' + Math.abs(v.pct).toFixed(0) + '% below usual)');
+  }
+  fs.writeFileSync(ALERT_STATE, JSON.stringify(next, null, 2));
+  if (fresh.length) await toast('Dragon Gear is cheap right now', fresh.slice(0, 3).join('\n') + (fresh.length > 3 ? '\n+' + (fresh.length - 3) + ' more' : ''));
+}
+
+function ps(script) {
+  return new Promise(res => {
+    if (process.platform !== 'win32') return res({ ok: false, out: 'not Windows' });
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true, timeout: 30000 }, (err, stdout, stderr) => res({ ok: !err, out: String(stdout || '') + String(stderr || '') }));
+  });
+}
+const psq = s => "'" + String(s).replace(/'/g, "''") + "'";
+function toast(title, body) {
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const xml = '<toast activationType="protocol" launch="http://127.0.0.1:' + PORT + '/"><visual><binding template="ToastGeneric"><text>' + esc(title) + '</text>' +
+    body.split('\n').map(l => '<text>' + esc(l) + '</text>').join('') + '</binding></visual></toast>';
+  return ps([
+    '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null',
+    '[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null',
+    '$x = New-Object Windows.Data.Xml.Dom.XmlDocument', '$x.LoadXml(' + psq(xml) + ')',
+    "$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'",
+    '[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($x))',
+  ].join('; '));
+}
+/* Alerts need the app running, so turning them on also starts it (hidden) when you log in to Windows. */
+function setAutostart(on) {
+  const drop = 'Unregister-ScheduledTask -TaskName ' + psq(TASK) + ' -Confirm:$false -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName ' + psq(OLD_TASK) + ' -Confirm:$false -ErrorAction SilentlyContinue';
+  if (!on) return ps(drop);
+  return ps([
+    drop,
+    '$a = New-ScheduledTaskAction -Execute ' + psq('conhost.exe') + ' -Argument ' + psq('--headless "' + NODE + '" "' + SERVER_JS + '"') + ' -WorkingDirectory ' + psq(C.ROOT),
+    '$t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME',
+    '$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew',
+    'Register-ScheduledTask -TaskName ' + psq(TASK) + ' -Action $a -Trigger $t -Settings $s -Description ' + psq('Dragon Gear Prices app (price alerts). Turn off from the app.') + ' -Force | Out-Null',
+  ].join('; '));
+}
+
+// Hourly check while alerts are on (and keep data fresh for an open page).
+setInterval(() => { if (settings.alerts && !busy && Date.now() - lastRefresh > 55 * 60000) refresh({ quiet: true }); }, 5 * 60000);
+
+const ALLOWED = ['class', 'class_mode', 'plan', 'auto_sync', 'currency', 'proficiency', 'quna_pack', 'my_kina_rate_quna_per_10m', 'xp_per_craft', 'cheap_when_below_usual_percent', 'expensive_when_above_usual_percent'];
+const RECOMPUTE = ['currency', 'proficiency', 'quna_pack', 'my_kina_rate_quna_per_10m', 'cheap_when_below_usual_percent', 'expensive_when_above_usual_percent'];
+function applySettings(patch) {
+  let needs = false;
+  for (const k of ALLOWED) if (k in patch) {
+    const v = patch[k];
+    if (k === 'class' && v !== null && !Slots.CLASSES.some(c => c.id === v)) continue;
+    if (k === 'class') { settings.class = v; settings.class_mode = 'manual'; continue; } // picked by hand: stays until "my class" again
+    if (k === 'class_mode') {
+      if (v === 'auto') { settings.class_mode = 'auto'; const mine = me.class || (settings.sync && settings.sync.profile && Slots.CLASSES.some(c => c.id === settings.sync.profile.className) ? settings.sync.profile.className : null); if (mine) settings.class = mine; }
+      else if (v === 'manual') settings.class_mode = 'manual';
+      continue;
+    }
+    if (k === 'currency' && !FX.CURRENCIES[v]) continue;
+    if (k === 'proficiency') { for (const p of C.PROFESSIONS) if (p in v) { const n = v[p] === null || v[p] === '' ? null : Math.round(Number(v[p])); settings.proficiency[p] = n >= 1 && n <= 100 ? n : null; } }
+    else if (k === 'quna_pack') { for (const f of ['quna', 'eur']) if (Number(v[f]) > 0) settings.quna_pack[f] = Number(v[f]); }
+    else if (k === 'xp_per_craft') { for (const [id, x] of Object.entries(v)) { const n = Number(x); if (n > 0) settings.xp_per_craft[id] = n; else delete settings.xp_per_craft[id]; } }
+    else if (k === 'my_kina_rate_quna_per_10m') settings[k] = Number(v) > 0 ? Number(v) : null;
+    else if (k.endsWith('_percent')) { if (Number(v) > 0 && Number(v) < 100) settings[k] = Number(v); }
+    else settings[k] = v;
+    if (RECOMPUTE.includes(k)) needs = true;
+  }
+  C.saveSettings(settings);
+  if (needs) recompute();
+}
+
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' };
+function send(res, code, body, type = 'application/json; charset=utf-8', extra = {}) {
+  res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...extra });
+  res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
+}
+function readBody(req) {
+  return new Promise((ok, bad) => { let b = ''; req.on('data', c => { b += c; if (b.length > 1e6) { bad(new Error('too big')); req.destroy(); } }); req.on('end', () => { try { ok(b ? JSON.parse(b) : {}); } catch (e) { bad(e); } }); });
+}
+const status = () => ({ busy, error: lastError, syncError, lastRefresh, hasReport: !!report, alerts: !!settings.alerts, market: market.status(), inventory: inventory.status(), me: me.status() });
+
+const server = http.createServer(async (req, res) => {
+  try {
+    // Only this PC, only this page: other websites cannot drive the app.
+    const host = String(req.headers.host || '');
+    if (host !== HOST + ':' + PORT && host !== 'localhost:' + PORT) return send(res, 403, { error: 'forbidden' });
+    const url = new URL(req.url, 'http://' + host), p = url.pathname;
+    if (req.method === 'POST') {
+      if (req.headers['x-flav'] !== '1' || !String(req.headers['content-type'] || '').startsWith('application/json')) return send(res, 403, { error: 'forbidden' });
+      const body = await readBody(req);
+      if (p === '/api/refresh') { refresh({ force: !!body.force }); return send(res, 200, status()); }
+      if (p === '/api/market') {
+        // from Flav-Toolkit's market reader: the Exchange as the game sees it
+        const changed = market.take(body);
+        if (changed === 'summary' || changed === 'stats') recompute();
+        return send(res, changed ? 200 : 400, { ok: !!changed, market: market.status() });
+      }
+      if (p === '/api/inventory') {
+        // from Flav-Toolkit's inventory reader: the bag, storage and warehouse as the game sent them
+        const changed = inventory.take(body);
+        return send(res, changed ? 200 : 400, { ok: !!changed, inventory: inventory.status() });
+      }
+      if (p === '/api/me') {
+        // from Flav-Toolkit: who is playing (name, server, class, level), as the game said at world entry
+        const changed = me.take(body);
+        if (changed) applyMe();
+        return send(res, changed ? 200 : 400, { ok: !!changed, me: me.status() });
+      }
+      if (p === '/api/settings') { applySettings(body); return send(res, 200, { settings, report }); }
+      if (p === '/api/leveling') {
+        if (!data) return send(res, 409, { error: 'no data yet' });
+        if (!C.PROFESSIONS.includes(body.profession)) return send(res, 400, { error: 'profession' });
+        return send(res, 200, C.leveling(data, settings, body.profession, body.ranges || {}));
+      }
+      if (p === '/api/alerts') {
+        settings.alerts = !!body.on; C.saveSettings(settings);
+        const r = await setAutostart(settings.alerts);
+        if (settings.alerts) await toast('Dragon Gear alerts are on', 'You will get a message like this when one of your pieces turns cheap. Click it to open the app.');
+        return send(res, 200, { ...status(), autostart: r });
+      }
+      if (p === '/api/sync') {
+        if (body.name != null) settings.character.name = String(body.name).trim().slice(0, 40);
+        let moved = false;
+        if (body.serverId != null) { settings.character.serverId = Number(body.serverId); moved = setServer(Number(body.serverId)); }
+        C.saveSettings(settings);
+        if (moved) { await refresh({}); return send(res, 200, { ...status(), settings, report }); }
+        if (!data) return send(res, 409, { error: 'Prices are still loading; try again in a moment.' });
+        await syncGear(true);
+        return send(res, 200, { ...status(), settings, report });
+      }
+      if (p === '/api/shop') {
+        const sh = settings.shop;
+        if (Array.isArray(body.sel)) sh.sel = body.sel.map(String).slice(0, 20);
+        if (typeof body.tick === 'string' && body.tick.length < 200) { if (sh.ticks[body.tick]) delete sh.ticks[body.tick]; else sh.ticks[body.tick] = 1; }
+        if (body.clear) sh.ticks = {};
+        if (body.show) overlaySeq++;
+        if (body.plan && typeof body.plan.slot === 'string' && Number.isInteger(body.plan.have) && body.plan.have >= 0 && body.plan.have <= 6) {
+          const cur = Slots.rangeOf(settings.plan, body.plan.slot);
+          settings.plan[body.plan.slot] = { have: body.plan.have, goal: Math.max(cur.goal, Math.min(6, body.plan.have + 1)), skip: false };
+        }
+        if (body.refresh && !busy) refresh({});
+        // from the overlay's ⚙: the currency and reading the gear on its own (same checks as /api/settings)
+        const s2 = {};
+        if (typeof body.currency === 'string') s2.currency = body.currency;
+        if (typeof body.auto_sync === 'boolean') s2.auto_sync = body.auto_sync;
+        if (typeof body.class === 'string') { if (body.class === 'auto') s2.class_mode = 'auto'; else s2.class = body.class; }
+        if (Object.keys(s2).length) applySettings(s2);
+        if (typeof body.use_inventory === 'boolean') sh.use_inventory = body.use_inventory;
+        if (body.kina_have != null) sh.kina_have = Math.max(0, Number(body.kina_have) || 0);
+        if (body.quna_have != null) sh.quna_have = Math.max(0, Number(body.quna_have) || 0);
+        const keys = Object.keys(sh.ticks); if (keys.length > 3000) for (const k of keys.slice(0, keys.length - 3000)) delete sh.ticks[k];
+        C.saveSettings(settings);
+        if (body.gear) return send(res, 200, gearNow());
+        return data ? send(res, 200, shoppingNow()) : send(res, 409, { error: 'no data yet' });
+      }
+      if (p === '/api/quit') { send(res, 200, { ok: true }); setTimeout(() => process.exit(0), 200); return; }
+      return send(res, 404, { error: 'not found' });
+    }
+    if (p === '/api/state') return send(res, 200, { ...status(), settings, report });
+    if (p === '/api/status') return send(res, 200, status());
+    if (p === '/api/servers') return send(res, 200, Armory.serverList());
+    if (p === '/api/shopping') return data ? send(res, 200, shoppingNow()) : send(res, 409, { error: 'no data yet' });
+    if (p === '/api/gear') return send(res, 200, gearNow());
+    if (p === '/api/overlay-seq') return send(res, 200, { show: overlaySeq });
+    if (p.startsWith('/icon/')) {
+      const id = p.slice(6);
+      if (!/^\d{1,12}$/.test(id) && id !== 'quna') return send(res, 404, '');
+      const f = await C.iconFile(data, id).catch(() => null);
+      if (!f) return send(res, 404, '');
+      return f.svg ? send(res, 200, f.svg, 'image/svg+xml', { 'Cache-Control': 'max-age=86400' }) : send(res, 200, fs.readFileSync(f.file), f.type, { 'Cache-Control': 'max-age=604800' });
+    }
+    const rel = p === '/' ? 'index.html' : p === '/list' ? 'list.html' : p.replace(/^\/+/, '');
+    if (rel === 'app/signal.js' || rel === 'app/slots.js') return send(res, 200, fs.readFileSync(path.join(__dirname, path.basename(rel))), TYPES['.js']);
+    const file = path.resolve(UI, rel);
+    if (!file.startsWith(UI + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return send(res, 404, 'not found', 'text/plain');
+    return send(res, 200, fs.readFileSync(file), TYPES[path.extname(file)] || 'application/octet-stream', rel.startsWith('art/') ? { 'Cache-Control': 'max-age=86400' } : {});
+  } catch (e) { logErr(e); send(res, 500, { error: e.message }); }
+});
+server.on('error', e => { if (e.code === 'EADDRINUSE') process.exit(0); logErr(e); process.exit(1); }); // already running: the launcher just opens the page
+server.listen(PORT, HOST, () => {
+  refresh();
+  // v1 used a separate hourly task; the app replaces it.
+  ps('Unregister-ScheduledTask -TaskName ' + psq(OLD_TASK) + ' -Confirm:$false -ErrorAction SilentlyContinue');
+});

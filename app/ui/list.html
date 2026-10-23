@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dragon Gear · Shopping list</title>
+<link rel="icon" href="/art/gladiator.webp">
+<style>
+:root{--bg:#0a0d13;--panel:#131824;--panel2:#1a2131;--line:#252e42;--line2:#323d56;--text:#e9ecf2;--muted:#94a0b6;--faint:#5f6a80;--gold:#e0b862;--gold2:#f6d58e;--cheap:#47cf83;--pricey:#f2894a;--info:#5aa9ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13.5px/1.4 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
+header{position:sticky;top:0;z-index:2;background:linear-gradient(180deg,#0a0d13 88%,transparent);padding:12px 12px 8px}
+h1{margin:0;font-size:17px}
+h1 span{color:var(--gold2)}
+.sum{color:var(--muted);font-size:12.5px;margin-top:2px}
+.sum b{color:var(--gold2)}
+.bar{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.tab,.mini{background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:5px 10px;color:var(--muted);cursor:pointer;font:inherit}
+.tab.on{border-color:var(--gold);color:var(--gold2)}
+.mini{padding:5px 8px}
+.chips{display:flex;gap:5px;overflow-x:auto;margin-top:9px;padding-bottom:3px;scrollbar-width:thin}
+.pc{display:flex;align-items:center;gap:5px;flex:none;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px 9px 3px 3px;color:var(--muted);cursor:pointer;font:inherit;font-size:12px}
+.pc img{width:20px;height:20px;border-radius:50%}
+.pc.on{border-color:var(--gold);color:var(--gold2);background:rgba(224,184,98,.1)}
+.pc.all{padding:3px 10px}
+.prog{height:3px;border-radius:3px;background:var(--line);margin-top:8px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--cheap);width:0;transition:width .3s}
+main{padding:0 12px 30px}
+.kc{background:linear-gradient(135deg,rgba(224,184,98,.14),var(--panel) 60%);border:1px solid #4a3d22;border-radius:12px;padding:10px 12px;margin:6px 0 10px}
+.kc h3{margin:0 0 4px;font-size:13px;letter-spacing:.8px;text-transform:uppercase;color:var(--gold2);display:flex;align-items:center;gap:8px}
+.kc .rate{margin-left:auto;font-size:11px;letter-spacing:0;text-transform:none;border-radius:999px;padding:2px 8px}
+.rate.good{background:rgba(71,207,131,.14);color:var(--cheap)}
+.rate.bad{background:rgba(242,137,74,.14);color:var(--pricey)}
+.rate.ok{background:rgba(157,171,196,.12);color:var(--muted)}
+.kc .big{font-size:20px;font-weight:700;color:var(--gold2)}
+.kc .big small{font-size:12px;color:var(--gold);font-weight:600}
+.kc .ln{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:12.5px;margin:3px 0}
+.kc .ln b{color:var(--text)}
+.kc .buy{display:flex;align-items:center;gap:10px;margin:8px 0 4px}
+.kc .buy img{width:34px;height:34px;border-radius:50%;background:#1b2130}
+.kc .buy .nm{flex:1}
+.kc .buy .nm b{display:block;font-size:15px}
+.kc .buy .nm small{color:var(--faint);font-size:11.5px}
+.kc .buy .amt{text-align:right}
+.kc .buy .amt b{display:block;font-size:20px;color:var(--gold2)}
+.kc .buy .amt small{color:var(--faint);font-size:11.5px}
+.row .pl{font-size:12px;color:var(--mute);margin-top:2px}.row .pl b{display:inline;color:var(--gold2);font-weight:600;font-size:12px}
+.vd{display:inline-block;font-size:10.5px;font-weight:600;line-height:15px;padding:0 6px;border-radius:8px;margin-left:5px;vertical-align:1px}
+.vd.have{color:#9cd0ff;box-shadow:inset 0 0 0 1px rgba(127,178,255,.5)}.row.owned{cursor:default}.row.owned .qty b{color:var(--ok,#5cc48a);font-size:13px;letter-spacing:.04em;text-transform:uppercase}
+.vd.pricey{color:#1b1406;background:var(--bad,#e06a4a)}.vd.cheap{color:#0b1a10;background:var(--ok,#5cc48a)}.vd.fair{color:var(--mute);box-shadow:inset 0 0 0 1px var(--line,#2a3140)}.vd.floor{color:var(--ok,#5cc48a);box-shadow:inset 0 0 0 1px var(--ok,#5cc48a)}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+.tile{position:relative;display:flex;flex-direction:column;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 4px 6px;text-align:center}
+.tile.best{border-color:var(--gold);box-shadow:0 0 14px -4px var(--gold)}
+.tile.none{opacity:.4}
+.tile img{width:34px;height:34px;border-radius:50%}
+.tile .sz{font-weight:700;font-size:14px;margin-top:3px}
+.tile .qp{display:flex;align-items:center;gap:3px;color:var(--gold2);font-weight:600}
+.tile .qp img{width:14px;height:14px}
+.tile .per{color:var(--faint);font-size:11px}
+.tile .n{position:absolute;top:-8px;right:-5px;background:linear-gradient(180deg,var(--gold2),var(--gold));color:#21180a;border-radius:999px;padding:0 7px;font-weight:700;font-size:10px;letter-spacing:.6px;text-transform:uppercase;line-height:17px}
+.tile.over{opacity:.55}
+.tile .cap{color:var(--cheap);font-weight:600;font-size:12px}
+.tile.over .cap{color:var(--muted)}
+.in.off{opacity:.5}
+.kc .res{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px}
+.kc .res img{width:20px;height:20px;border-radius:50%}
+.kc .res b{color:var(--gold2);font-size:14px}
+.kc .have{display:flex;gap:8px;margin-top:8px}
+.kc .have label{flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--faint)}
+.kc input{background:var(--bg);border:1px solid var(--line2);border-radius:7px;padding:4px 7px;color:var(--text);font:inherit;width:100%}
+.row{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 9px;margin:6px 0;cursor:pointer;transition:opacity .2s,border-color .2s}
+.row:hover{border-color:var(--line2)}
+.done{opacity:.4}
+.row.done .nm b{text-decoration:line-through}
+.kc.done>:not(h3){opacity:.45}
+.kc h3 .ck{margin-right:2px}
+.ck{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--line2);flex:none;display:flex;align-items:center;justify-content:center}
+.done .ck{background:var(--cheap);border-color:var(--cheap)}
+.done .ck::after{content:"";width:5px;height:9px;border:solid #0a0d13;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.row img{width:30px;height:30px;border-radius:6px;background:#1b2130;flex:none}
+.nm{flex:1;min-width:0}
+.nm b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nm small{color:var(--faint);font-size:11.5px}
+.qty{text-align:right;white-space:nowrap}
+.qty b{font-size:16px;color:var(--gold2)}
+.qty small{display:block;color:var(--faint);font-size:11px}
+.thin{color:var(--pricey)}
+.src{margin-top:3px;font-size:11px;color:var(--muted)} .src .live{color:var(--cheap);font-weight:600} .src .live::before{content:"●";margin-right:4px;font-size:8px;vertical-align:1px}
+.tag{font-size:9px;line-height:13px;padding:0 5px;border-radius:7px;margin-left:5px;border:1px solid currentColor;vertical-align:1px} .tag.ex{color:var(--cheap)} .tag.lv{color:var(--gold)}
+.piece{margin-top:14px}
+.ph{display:flex;align-items:center;gap:9px;margin-bottom:4px}
+.ph img{width:34px;height:34px;border-radius:7px}
+.ph b{font-size:14.5px}
+.ph small{display:block;color:var(--faint);font-size:11.5px}
+.ph .pt{margin-left:auto;text-align:right}
+.ph .pt b{color:var(--gold2);font-size:15px}
+.step{position:relative;display:flex;gap:11px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 10px;margin:0 0 14px;cursor:pointer}
+.step:not(.last)::after{content:"";position:absolute;left:31px;bottom:-15px;width:2px;height:14px;background:linear-gradient(180deg,var(--gold),transparent)}
+.step.done:not(.last)::after{background:linear-gradient(180deg,var(--cheap),transparent)}
+.step .si{position:relative;flex:none;width:44px;height:44px}
+.step .si img{width:44px;height:44px;border-radius:50%;background:radial-gradient(circle at 50% 38%,#2e3442,#0c0f16 75%);box-shadow:0 0 0 2px #0a0d13}
+.step .si.tier img{box-shadow:0 0 0 2px var(--gold),0 0 10px -2px var(--gold)}
+.step.done .si img{box-shadow:0 0 0 2px var(--cheap);filter:saturate(.5) brightness(.8)}
+.step .n{position:absolute;right:-5px;bottom:-3px;min-width:19px;height:19px;padding:0 4px;border-radius:10px;background:var(--panel2);border:1px solid var(--line2);color:var(--text);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.step.done .n{background:var(--cheap);color:#0a0d13;border-color:var(--cheap)}
+.step.k0 .n{background:var(--gold);color:#21180a;border-color:var(--gold)}
+.step .t{font-weight:600}
+.step .meta{color:var(--faint);font-size:11.5px;margin:2px 0 5px}
+.cost{display:flex;justify-content:space-between;gap:8px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted)}
+.cost b{color:var(--gold2)}
+.cost .run{color:var(--faint)}
+.lucky{color:var(--gold2)}
+.ins{display:flex;flex-wrap:wrap;gap:4px}
+.in{display:inline-flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:2px 6px 2px 3px;font-size:11.5px;color:var(--muted)}
+.in img{width:16px;height:16px;border-radius:3px}
+.in.craft{border-color:#3a3220;color:var(--gold2)}
+.in.own{border-color:#1f3a2b;color:var(--cheap)}
+.in.npc{border-color:#24344c;color:#9cc6ff}
+.note{color:var(--faint);font-size:11.5px;margin:10px 2px}
+.empty{color:var(--muted);padding:30px 6px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Dragon Gear</span> shopping list</h1>
+  <div class="sum" id="sum">Loading…</div>
+  <div class="bar"><button class="tab on" data-v="buy">Buy</button><button class="tab" data-v="craft">Craft steps</button><span style="flex:1"></span><button class="mini" id="clear" title="Untick everything">Untick</button><button class="mini" id="copy" title="Copy the list as text">Copy</button><button class="mini" id="reload" title="Reload">↻</button></div>
+  <div class="chips" id="chips"></div>
+  <div class="prog"><i id="prog"></i></div>
+</header>
+<main id="main"></main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (v, d = 0) => v == null || !isFinite(v) ? '—' : Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const kfmt = v => v == null ? '—' : v >= 1e6 ? fmt(v / 1e6, 2) + 'M' : v >= 1e3 ? fmt(v / 1e3, 1) + 'k' : fmt(v);
+const cnt = v => v >= 10 || Math.abs(v - Math.round(v)) < .05 ? fmt(v) : fmt(v, 1);
+const img = s => s ? '<img src="' + esc(s) + '" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' : '';
+const api = (p, body) => fetch(p, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Flav': '1' }, body: JSON.stringify(body) }).then(r => r.json());
+let L = null, view = 'buy';
+try { view = localStorage.getItem('dragon-shop-view') || 'buy'; } catch (e) {}
+// Money in the currency picked in the main window ($, € or SAR).
+const toMoney = k => L && L.money.perKina ? k * L.money.perKina : null;
+const cash = (v, d) => { if (v == null || !isFinite(v)) return '—'; const m = L.money, n = fmt(v, d ?? (Math.abs(v) < 100 ? 2 : 0)); return m.before ? m.sym + n : n + ' ' + m.sym; };
+const chestName = k => k >= 1e6 ? fmt(k / 1e6) + 'M' : fmt(k / 1e3) + 'k';
+
+async function load() { L = await api('/api/shopping'); if (location.hash.length > 1) { const want = decodeURIComponent(location.hash.slice(1)); history.replaceState(null, '', '/list'); if (L.pieces.some(p => p.slot === want)) L = await api('/api/shop', { sel: [want] }); } render(); }
+const post = async body => { L = await api('/api/shop', body); render(); };
+
+// Quna shop: how many Quna packs, and a price cap per Kina Chest. The Exchange list climbs (790, 798, 810…) and the public
+// data has only the cheapest listing, so: buy the cheapest listings at or under the caps, the "start" chest first.
+// With the chests' real lists (opened in game, read by Flav-Toolkit) the plan is exact: how many of each chest.
+// "buy 935 in 3 listings (328 + 367 + 240) ≤ 1,200 each": listings are bought whole, cheapest first
+const pfmt = v => (v == null ? '—' : v < 1e4 ? fmt(v) : kfmt(v));
+const planLine = b => {
+  const p = b.plan; if (!p || !p.stacks || !p.stacks.length) return '';
+  const n = p.stacks.reduce((t, s) => t + s.count, 0), stacks = p.stacks.map(s => (s.count > 1 ? s.count + '×' + fmt(s.quantity) : fmt(s.quantity))).join(' + ');
+  return '<div class="pl" title="The cheapest listings that cover what is still needed, bought whole">buy <b>' + fmt(p.bought) + '</b> ≤ <b>' + pfmt(p.maxUnit) + '</b> each · ' + (b.listings != null && b.listings >= n ? n + ' of ' + fmt(b.listings) + ' listings' : n + ' listing' + (n === 1 ? '' : 's')) + (n > 1 || p.stacks[0].quantity > 1 ? ': ' + stacks : '') + (p.bought > b.qty ? ' <span class="thin">· ' + fmt(p.bought - b.qty) + ' over</span>' : '') + '</div>';
+};
+// what the game says is already owned (Flav-Toolkit reads the bag, storage and warehouse)
+const whereHave = h => [['bag', h.bag], ['storage', h.storage], ['warehouse', h.warehouse]].filter(([, n]) => n > 0).map(([w, n]) => w + ' ' + fmt(n)).join(' · ');
+const haveTag = b => (!b.have || b.have.total <= 0 || b.owned ? '' : ' <span class="vd have" title="Read from the game: ' + esc(whereHave(b.have)) + '">have ' + fmt(b.have.total) + ' of ' + fmt(b.qty) + '</span>');
+const askedFor = b => (b.missing != null ? b.missing : b.qty);
+const shortTag = b => (b.owned ? '' : b.plan && b.plan.stacks ? (b.plan.bought < askedFor(b) ? ' · <span class="thin">only ' + fmt(b.plan.bought) + ' on the list</span>' : '')
+  : b.listings != null && b.listings < askedFor(b) ? ' · <span class="thin">only ' + b.listings + ' listed</span>' : '');
+// With only the cheapest listing known (list not opened in game), "pricey" still holds; "cheap" is shown softer.
+const verdictTag = p => (!p || p.pct == null || !p.verdict ? ''
+  : p.verdict === 'pricey' ? ' <span class="vd pricey" title="' + (p.floor ? 'Even the cheapest listing is well above the usual price. Wait for the market to settle.' : 'The dearest listing you would need sits well above the usual price. Buy what is cheap, wait for the rest.') + '">pricey +' + fmt(p.pct, 0) + '%' + (p.pct >= 25 ? ' · wait' : '') + '</span>'
+  : p.verdict === 'cheap' ? ' <span class="vd ' + (p.floor ? 'floor' : 'cheap') + '" title="' + (p.floor ? 'The cheapest listing is below the usual price; open its list in game to see how far that goes' : 'Below the usual price') + '">' + (p.floor ? 'cheapest ' : 'cheap ') + fmt(p.pct, 0) + '%</span>'
+  : p.floor ? '' : ' <span class="vd fair" title="Around the usual price">fair</span>');
+const chipText = (k, p) => (k.exact ? (p.seen === false ? chestName(p.kina) + ' not opened' : chestName(p.kina) + ' × ' + fmt(p.buy) + ' ≤ ' + fmt(p.cap)) : chestName(p.kina) + ' ≤ ' + fmt(p.cap));
+function capChips(k) {
+  return k.packages.filter(p => p.quna && (!k.exact || p.buy > 0 || p.seen === false)).sort((a, b) => b.under - a.under || a.qunaPer1m - b.qunaPer1m)
+    .map(p => '<span class="in' + (p.under ? '' : ' off') + '">' + img('/icon/' + p.id) + chipText(k, p) + '</span>').join('');
+}
+// Where the prices come from: the Exchange as the game saw it, else a2-tracker.
+function priceSource(m) {
+  if (m && m.live) return '<span class="live">Exchange prices</span> · seen ' + (m.ageMin == null || m.ageMin < 1 ? 'just now' : m.ageMin + ' min ago') + (m.ladders ? ' · ' + m.ladders + ' list' + (m.ladders === 1 ? '' : 's') + ' opened' : '');
+  return 'a2-tracker prices (hourly) · start the game with Play in Flav-Toolkit for the Exchange\'s own';
+}
+// Whether the bag, storage and warehouse were read (Flav-Toolkit), and the Kina in hand.
+const inventorySource = inv => (inv && inv.fresh ? ' · <span class="live">bag read</span>' + (inv.kina != null ? ' · ' + kfmt(inv.kina) + ' Kina in hand' : '') : '');
+const liveTag = b => (b.source === 'ladder' ? '<span class="tag ex" title="From the Exchange\'s own list: the cheapest listings that cover this many">' + (b.exact ? 'exact' : 'list') + '</span>' : b.source === 'summary' ? '<span class="tag lv" title="The cheapest listing the game saw on the Exchange">live</span>' : '');
+function kinaCard(ticks) {
+  const k = L.kina, m = L.money;
+  if (!k || !m.qunaPer10m || !k.packages.length) return '';
+  const rate = m.ratePct == null ? '' : '<span class="rate ' + (m.ratePct <= -3 ? 'good' : m.ratePct >= 3 ? 'bad' : 'ok') + '">Kina ' + (m.ratePct <= -3 ? 'cheap' : m.ratePct >= 3 ? 'pricey' : 'normal') + ' today ' + (m.ratePct > 0 ? '+' : '') + fmt(m.ratePct, 1) + '%</span>';
+  const kk = k.need ? 'k:' + Math.round(k.need / 1e6) : null, on = kk && ticks[kk];
+  let h = '<div class="kc' + (on ? ' done' : '') + '"' + (kk ? ' data-k="' + kk + '"' : '') + '><h3>' + (kk ? '<span class="ck"></span>' : '') + 'Quna shop' + rate + '</h3>';
+  if (k.need) h += '<div class="buy">' + img('/icon/quna') + '<div class="nm"><b>' + k.packs + ' × ' + fmt(k.pack.quna) + ' Quna</b><small>Quna pack' + (k.packs === 1 ? '' : 's') + ' to buy</small></div><div class="amt"><b>' + esc(cash(k.money)) + '</b>' + (m.code === 'EUR' ? '' : '<small>€' + fmt(k.eur, 2) + '</small>') + '</div></div>';
+  h += '<div class="tiles">' + k.packages.map(p => '<div class="tile' + (p.best ? ' best' : '') + (p.quna && !p.under ? ' over' : '') + (p.quna ? '' : ' none') + '">' + (p.best ? '<span class="n">start</span>' : '') + img('/icon/' + p.id) + '<div class="sz">' + chestName(p.kina) + '</div><div class="qp">' + img('/icon/quna') + (p.quna ? fmt(p.quna) : '—') + '</div><div class="cap">' + (!p.quna ? 'none listed' : k.exact ? (p.seen === false ? 'list not opened' : p.buy ? 'buy ' + fmt(p.buy) + ' ≤ ' + fmt(p.cap) : 'none needed') : 'buy ≤ ' + fmt(p.cap)) + '</div><div class="per">' + (p.quna ? fmt(p.qunaPer1m) + ' Quna / 1M · ' + esc(cash(p.moneyPer1m)) + (k.exact ? (p.seen === false ? ' · open it in game' : '') : p.under ? '' : ' · above cap') : '') + '</div></div>').join('') + '</div>';
+  if (k.need) h += '<div class="res">' + img('/icon/930100031') + '<span><b>' + kfmt(k.need) + ' Kina</b> needed · ' + (k.exact ? 'these chests give <b style="font-size:12.5px">' + kfmt(k.kinaAtCap) + '</b> for ' + fmt(k.estQuna) + ' Quna' : 'those packs buy <b style="font-size:12.5px">' + kfmt(k.kinaAtCap) + '+</b> even at the caps') + '</span></div>';
+  else h += '<div class="res">' + img('/icon/930100031') + '<span>' + (k.have ? 'Your Kina covers this list.' : 'Nothing to buy.') + '</span></div>';
+  if (k.short) h += '<div class="ln thin">Fewer chests are listed than you need right now.</div>';
+  h += '<div class="have"><label>Kina I already have<input id="kHave" type="number" min="0" value="' + (k.have || '') + '" placeholder="0"></label><label>Quna I already have<input id="qHave" type="number" min="0" value="' + (k.qunaHave || '') + '" placeholder="0"></label></div>';
+  h += '<div class="note" style="margin:6px 0 0">' + (k.exact
+    ? 'From the Exchange\'s own lists: buy exactly these, cheapest first. A chest whose list you haven\'t opened in game isn\'t counted; open it on the Exchange and it joins the plan.'
+    : 'On the Exchange, buy the cheapest listings at or under these caps, the "start" chest first. Prices climb as listings go (790, 798, 810…), so the packs are counted at the caps; spare Quna buys more chests under them.') + ' 1 pack (' + esc(cash(k.pack.price)) + ') ≈ ' + kfmt(k.onePackKina) + ' Kina. Exchange rates: Rates By Exchange Rate API.</div></div>';
+  return h;
+}
+
+// A step's tick key names what the step makes (not its number), so ticks survive route changes. Same as the overlay's.
+function stepKey(p, n) {
+  const name = st => (st.method || '') + '>' + (st.tier ? 'T' + st.tier + ' ' : '') + st.item;
+  const me = name(p.steps[n]), nth = p.steps.slice(0, n).filter(x => name(x) === me).length;
+  return ('s:' + p.slot + ':' + p.have + '-' + p.goal + ':' + me + (nth ? '#' + (nth + 1) : '')).slice(0, 190);
+}
+
+function render() {
+  if (!L || !L.pieces) { $('main').innerHTML = '<div class="empty">No prices yet. Refresh in the main window.</div>'; return; }
+  const sel = L.sel, ticks = L.ticks || {};
+  $('chips').innerHTML = (L.pieces.length > 1 ? '<button class="pc all' + (sel.length === L.pieces.length ? ' on' : '') + '" data-all="1">All ' + L.pieces.length + '</button>' : '') +
+    L.pieces.map(p => '<button class="pc' + (sel.includes(p.slot) ? ' on' : '') + '" data-s="' + esc(p.slot) + '" title="' + esc(p.item) + ' · ' + esc(cash(toMoney(p.kina))) + '">' + img(p.icon) + esc(p.label) + '</button>').join('');
+  for (const c of document.querySelectorAll('.pc')) c.onclick = e => {
+    let s;
+    if (c.dataset.all) s = sel.length === L.pieces.length ? [L.pieces[0].slot] : L.pieces.map(p => p.slot);
+    else if (e.ctrlKey || e.shiftKey) s = sel.includes(c.dataset.s) ? sel.filter(x => x !== c.dataset.s) : [...sel, c.dataset.s];
+    else s = [c.dataset.s];
+    post({ sel: s.length ? s : [c.dataset.s] });
+  };
+  const ch = L.chosen, total = L.totalKina;
+  $('sum').innerHTML = L.pieces.length ? (ch.length === 1 ? esc(ch[0].label) + ' (' + (ch[0].have ? 'T' + ch[0].have : 'nothing') + ' → T' + ch[0].goal + ')' : ch.length + ' pieces') + ' · materials <b>' + kfmt(total) + ' Kina</b>' + (L.kina && L.kina.need ? ' · you pay <b>' + esc(cash(L.kina.money)) + '</b> in Quna packs' : ' ≈ <b>' + esc(cash(toMoney(total))) + '</b>') + '<div class="src">' + priceSource(L.market) + inventorySource(L.inventory) + '</div>' : 'Nothing to craft in your plan.';
+  for (const b of document.querySelectorAll('.tab')) b.classList.toggle('on', b.dataset.v === view);
+  let h = '', done = 0, all = 0;
+  if (L.kina && L.kina.need) { all++; if (ticks['k:' + Math.round(L.kina.need / 1e6)]) done++; }
+  if (view === 'buy') {
+    h += kinaCard(ticks);
+    for (const b of L.buy) {
+      // owned: the game says the bag, storage and warehouse already hold what the plan needs; ticked without a click
+      const k = 'b:' + b.id + ':' + b.qty, on = b.owned || !!ticks[k]; all++; if (on) done++;
+      h += '<div class="row' + (on ? ' done' : '') + (b.owned ? ' owned' : '') + '"' + (b.owned ? '' : ' data-k="' + esc(k) + '"') + '><span class="ck"></span>' + img(b.icon) + '<div class="nm"><b>' + esc(b.name) + '</b><small>' + (b.npc ? 'NPC shop · ' : '') + pfmt(b.unit) + ' each' + liveTag(b) + verdictTag(b.plan) + (ch.length > 1 ? ' · for ' + (b.for.length === ch.length ? 'all' : esc(b.for.join(', '))) : '') + shortTag(b) + haveTag(b) + '</small>' + planLine(b) + '</div><div class="qty"><b>' + (b.owned ? 'owned' : b.have && b.have.total > 0 ? '×' + fmt(b.missing) + ' more' : '×' + fmt(b.qty)) + '</b><small>' + (b.owned ? fmt(b.have.total) + ' of ' + fmt(b.qty) + ' in hand' : kfmt(b.cost) + ' · ' + esc(cash(toMoney(b.cost)))) + '</small></div></div>';
+    }
+    h += '<div class="note">Counts include the expected failed tries, rounded up. With bad luck you may need a few more; with good luck, fewer.' + (ch.length === 1 ? ' Ctrl+click chips to shop for several pieces at once.' : '') + '</div>';
+  } else {
+    const k = L.kina;
+    if (k && k.need) {
+      const kk = 'k:' + Math.round(k.need / 1e6), on = !!ticks[kk];
+      h += '<div class="step k0 last' + (on ? ' done' : '') + '" data-k="' + kk + '"><span class="si">' + img('/icon/quna') + '<span class="n">' + (on ? '✓' : '0') + '</span></span><div style="flex:1"><div class="t">Get your Kina</div><div class="meta">Buy ' + k.packs + '× ' + fmt(k.pack.quna) + ' Quna pack (' + esc(cash(k.money)) + '), then on the Exchange, Kina Chests at or under:</div><div class="ins">' + capChips(k) + '</div></div></div>';
+    }
+    for (const p of ch) {
+      const pk = p.steps.reduce((t, s) => t + s.cost, 0);
+      h += '<div class="piece"><div class="ph">' + img(p.icon) + '<div><b>' + esc(p.label) + '</b><small>' + (p.have ? 'T' + p.have : 'nothing') + ' → T' + p.goal + ' · ' + p.steps.length + ' steps</small></div><div class="pt"><b>' + kfmt(pk) + ' Kina</b><small style="display:block;color:var(--faint);font-size:11px">' + esc(cash(toMoney(pk), 0)) + ' in all</small></div></div>';
+      let run = 0;
+      p.steps.forEach((st, i) => {
+        run += st.cost;
+        const key = stepKey(p, i), on = !!ticks[key]; all++; if (on) done++;
+        const title = st.lucky && st.base ? 'Craft <b>' + esc(st.base) + '</b> until it comes out <span class="lucky">' + esc(st.item) + '</span>' : (st.tier ? 'Craft <span class="lucky">T' + st.tier + ' ' + esc(st.item) + '</span>' : (st.method === 'convert' ? 'Convert to ' : 'Craft ') + '<b>' + esc(st.item) + '</b>');
+        const meta = (st.tier && st.tier > 1 ? 'always succeeds' : 'about <b>' + cnt(st.attempts) + '</b> tr' + (Math.abs(st.attempts - 1) < .01 ? 'y' : 'ies') + ' · ' + fmt(st.chance * 100, st.chance < .1 ? 1 : 0) + '% per try') + (st.makes > 1.01 ? ' · makes ' + cnt(st.makes) : '') + (st.profession ? ' · ' + esc(st.profession) + (st.mastery ? ' ' + st.mastery : '') : '');
+        h += '<div class="step' + (on ? ' done' : '') + (i === p.steps.length - 1 ? ' last' : '') + '" data-k="' + esc(key) + '"><span class="si' + (st.tier ? ' tier' : '') + '">' + img(st.icon) + '<span class="n">' + (on ? '✓' : i + 1) + '</span></span><div style="flex:1;min-width:0"><div class="t">' + title + '</div><div class="meta">' + meta + '</div><div class="ins">' +
+          st.rows.map(r => '<span class="in ' + (r.source === 'craft' || r.source === 'convert' ? 'craft' : r.source === 'own' ? 'own' : r.source === 'npc' ? 'npc' : '') + '" title="' + (r.cost ? esc(kfmt(r.cost)) + ' Kina' : '') + '">' + img(r.icon) + cnt(r.count) + '× ' + esc(r.name) + (r.source === 'own' ? ' (yours)' : r.source === 'craft' ? ' (step above)' : '') + '</span>').join('') +
+          '</div><div class="cost"><span>This step <b>' + kfmt(st.cost) + ' Kina</b> <span class="run">· ' + esc(cash(toMoney(st.cost))) + '</span></span><span class="run">so far ' + kfmt(run) + ' Kina</span></div></div></div>';
+      });
+      if (!p.ok) h += '<div class="note thin">Some step has no price right now; the list for this piece is incomplete.</div>';
+    }
+    h += '<div class="note">Gold = made in an earlier step · green = the tier you already own · blue = NPC shop. Step costs are what you buy for that step, failed tries included; things made in earlier steps are already paid for there.</div>';
+  }
+  $('main').innerHTML = h || '<div class="empty">Nothing to buy. Set your goals in the main window.</div>';
+  $('prog').style.width = all ? (done / all * 100) + '%' : '0';
+  for (const el of document.querySelectorAll('[data-k]')) el.onclick = () => post({ tick: el.dataset.k });
+  const sv = (id, key) => { const i = $(id); if (i) { i.onchange = () => post({ [key]: Number(i.value) || 0 }); i.onclick = e => e.stopPropagation(); } };
+  sv('kHave', 'kina_have'); sv('qHave', 'quna_have');
+}
+function asText() {
+  if (!L) return '';
+  const k = L.kina;
+  let t = '';
+  if (k && k.need) t += 'KINA: buy ' + k.packs + 'x Quna pack (' + cash(k.money) + '), then ' + (k.exact ? 'Kina Chests: ' + k.packages.filter(p => p.buy > 0).map(p => p.buy + 'x ' + chestName(p.kina) + ' <= ' + p.cap).join(', ') : 'Kina Chests at or under: ' + k.packages.filter(p => p.quna).map(p => chestName(p.kina) + ' <= ' + p.cap).join(', ')) + '\n\n';
+  t += 'BUY\n' + L.buy.map(b => '- ' + b.qty + 'x ' + b.name + (b.npc ? ' (NPC)' : '')).join('\n') + '\n';
+  for (const p of L.chosen) {
+    t += '\n' + p.label.toUpperCase() + ' (' + (p.have ? 'T' + p.have : 'nothing') + ' -> T' + p.goal + ')\n';
+    p.steps.forEach((st, i) => { t += (i + 1) + '. ' + (st.lucky && st.base ? 'Craft ' + st.base + ' until ' + st.item : 'Craft ' + (st.tier ? 'T' + st.tier + ' ' : '') + st.item) + (st.tier > 1 ? '' : ' (~' + cnt(st.attempts) + ' tries)') + ' [' + cash(toMoney(st.cost)) + ']: ' + st.rows.map(r => cnt(r.count) + 'x ' + r.name).join(', ') + '\n'; });
+  }
+  return t;
+}
+for (const b of document.querySelectorAll('.tab')) b.onclick = () => { view = b.dataset.v; try { localStorage.setItem('dragon-shop-view', view); } catch (e) {} render(); };
+$('reload').onclick = load;
+$('clear').onclick = () => { if (confirm('Untick everything?')) post({ clear: true }); };
+$('copy').onclick = async () => { try { await navigator.clipboard.writeText(asText()); $('copy').textContent = 'Copied'; setTimeout(() => $('copy').textContent = 'Copy', 1500); } catch (e) { $('copy').textContent = 'Failed'; } };
+window.addEventListener('hashchange', load);
+window.addEventListener('focus', load);
+setInterval(() => { if (document.visibilityState === 'visible') load(); }, 15000);
+load();
+</script>
+</body>
+</html>
