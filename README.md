@@ -9,7 +9,7 @@ By Flavbest. GPL-3.0.
 - A small local app (`app/server.js`, Node.js) serves a page at `http://127.0.0.1:7317` on your PC only. It fetches prices from [a2-tracker.com](https://a2-tracker.com) and, while you play with Flav-Toolkit, reads its local event feed (`feed.js`): the Exchange as the game itself downloads it, your bag, storage and warehouse, and who you are (name, server, class). Nothing is sent to the game or its servers.
 - Alerts (`alerts.js`): any item, a price to buy or sell at, a listing count, or cheaper / pricier than usual; a Windows notification and a note on the feed with the item's picture.
 - Flav-Toolkit's hub starts and stops it (`addon.json`), and shows its shopping list over the game.
-- Your character's worn gear comes from the official AION 2 site, with only the character name and server sent, on your own setting.
+- Your character's worn gear comes from the game's own login data through Flav-Toolkit (each slot's item and enchant level). Only when the game isn't being read does the app ask the official AION 2 site (on by default with the Auto switch, or with "Read my gear"): it sends the character name, server and region, then the site's own character id.
 
 `README.txt` is the player's guide (it ships with the add-on). Flav-Toolkit's [`docs/SECURITY.md`](https://github.com/Flavbestlol/flav-toolkit/blob/main/docs/SECURITY.md) says what the whole toolkit may and may not do.
 
@@ -20,7 +20,7 @@ With Flav-Toolkit: put this folder at `Addons\Market Crafting\` next to the `Fla
 ## Develop
 
 ```
-node --test app/test/market.test.js app/test/inventory.test.js app/test/me.test.js app/test/alerts.test.js app/test/armory.test.js
+node --test app/test/market.test.js app/test/inventory.test.js app/test/me.test.js app/test/alerts.test.js app/test/armory.test.js app/test/gear.test.js
 ```
 
 Never commit `settings.json`, `data\`, `captures\`, a `.pcap` or a key file: they are the player's own, and `.gitignore` refuses them. Nothing personal in the code, docs or commits: public name "Flavbest" only.

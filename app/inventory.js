@@ -8,8 +8,10 @@
    saves it so a restart keeps what was seen. A list older than MAX_AGE is not trusted for ticking lines (the player
    may have played without the toolkit since), only shown as "last seen".
 
-   Containers: bag, storage (the character's), warehouse (the account's). Kina is a stack like any other: the unbound
-   Kina the Exchange takes is item 930100031 in the bag; bound Kina is another item and is not counted. */
+   Containers: bag, storage (the character's), warehouse (the account's), and equipped: what the character wears, each
+   with the slot it is worn in (`worn`: main-hand, earring-1…) and its enchant level when the login list said them.
+   Worn gear is never counted as owned material. Kina is a stack like any other: the unbound Kina the Exchange takes is
+   item 930100031 in the bag; bound Kina is another item and is not counted. */
 
 const fs = require('fs');
 
@@ -42,7 +44,7 @@ class Inventory {
       return null;
     }
     for (const r of rows) {
-      const key = r.container + ':' + r.slot;
+      const key = keyOf(r);
       if (r.count > 0) this.stacks.set(key, { ...r, at });
       else this.stacks.delete(key);
     }
@@ -61,6 +63,15 @@ class Inventory {
       out.total += s.count;
     }
     return out;
+  }
+
+  /* What the character wears, as the last login list said it: [{ worn, item, level }] (level null when unread), or
+     null when no list with worn gear was seen. A swap since then shows at the next login or zone change. */
+  worn() {
+    if (!this.listAt) return null;
+    const out = [];
+    for (const s of this.stacks.values()) if (s.container === 'equipped' && s.worn) out.push({ worn: s.worn, item: s.item, level: s.level ?? null });
+    return out.length ? out : null;
   }
 
   /* The unbound Kina in the bag, or null when no list was seen. */
@@ -107,7 +118,7 @@ class Inventory {
       this.changedAt = Number(j.changedAt) || 0;
       for (const s of j.stacks || []) {
         const r = normalize(s);
-        if (r && r.count > 0) this.stacks.set(r.container + ':' + r.slot, { ...r, at: Number(s.at) || this.listAt });
+        if (r && r.count > 0) this.stacks.set(keyOf(r), { ...r, at: Number(s.at) || this.listAt });
       }
     } catch (e) { /* no file yet */ }
   }
@@ -119,7 +130,15 @@ function normalize(s) {
   const item = Number(s.item), count = Number(s.count), slot = Number(s.slot);
   if (!Number.isInteger(item) || item < 100000000 || item > 999999999 || !Number.isFinite(count) || count < 0 || !Number.isInteger(slot)) return null;
   const container = typeof s.container === 'string' ? s.container : (s.container && s.container.other != null ? 'other' + s.container.other : 'other');
-  return { item, count: Math.floor(count), container, slot };
+  const out = { item, count: Math.floor(count), container, slot };
+  if (container === 'equipped') {
+    if (typeof s.worn === 'string' && /^[a-z0-9-]{1,20}$/.test(s.worn)) out.worn = s.worn;
+    if (Number.isInteger(s.level) && s.level >= 0 && s.level <= 40) out.level = s.level;
+  }
+  return out;
 }
+
+/* Where a stack is kept: its container and slot; worn items also by item, since two can share a slot number. */
+const keyOf = r => r.container + ':' + r.slot + (r.container === 'equipped' ? ':' + r.item : '');
 
 module.exports = { Inventory, KINA, MAX_AGE_MS };

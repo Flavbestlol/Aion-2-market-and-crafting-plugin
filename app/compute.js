@@ -381,8 +381,30 @@ function applySync(data, settings, result) {
     }
   }
   delete settings.plan._default;
-  settings.sync = { at: result.at, profile: result.profile, detected };
+  settings.sync = { at: result.at, profile: result.profile, detected, source: result.source === 'game' ? 'game' : 'site' };
   return changed;
+}
+
+/* The game's own slot names (Flav-Toolkit's inventory event, `worn`) -> this app's slot ids (the official site's). */
+const WORN_SLOT = { 'main-hand': 'MainHand', 'sub-hand': 'SubHand', helmet: 'Helmet', shoulder: 'Shoulder', torso: 'Torso', pants: 'Pants', gloves: 'Gloves', boots: 'Boots', cape: 'Cape', necklace: 'Necklace', 'earring-1': 'Earring1', 'earring-2': 'Earring2', 'ring-1': 'Ring1', 'ring-2': 'Ring2' };
+/* What the character wears, from the game's login list (inventory.worn()), in the shape applySync takes from the
+   official site: no website asked. `who`: { name, serverId, serverName, region, className, level, faction }. The level
+   is the enchant plus the levels past +15; the site's gear score, combat power and portrait are not in the game's
+   list. Null when nothing worn is known. */
+function gearFromGame(data, worn, who, at) {
+  if (!data || !Array.isArray(worn) || !worn.length) return null;
+  const items = [];
+  for (const w of worn) {
+    const slot = WORN_SLOT[w.worn];
+    if (!slot) continue;
+    const it = data.catalogue.items[String(w.item)];
+    const level = Number.isInteger(w.level) ? w.level : 0;
+    items.push({ slot, id: String(w.item), name: it && it.name ? it.name : 'other gear', grade: null, enchant: Math.min(15, level), exceed: Math.max(0, level - 15), icon: it ? '/icon/' + w.item : null });
+  }
+  return {
+    source: 'game', at: at || Date.now(), items,
+    profile: { name: who.name, serverId: who.serverId, serverName: who.serverName || null, region: who.region || '', className: who.className || null, level: who.level || null, combatPower: null, gearScore: null, faction: who.faction || 'Elyos', portrait: null, page: null },
+  };
 }
 
 /* Shopping list for the plan: what to buy (rounded up) and the crafting steps in order, per piece. */
@@ -722,4 +744,4 @@ function tickStep(ticks, key, order) {
   else for (const k of order.slice(0, i + 1)) ticks[k] = 1;
 }
 
-module.exports = { kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, shopping, stepKeys, tickStep, pickListings, ROOT, DATA, PROFESSIONS, XP_TOTAL };
+module.exports = { kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, gearFromGame, WORN_SLOT, shopping, stepKeys, tickStep, pickListings, ROOT, DATA, PROFESSIONS, XP_TOTAL };

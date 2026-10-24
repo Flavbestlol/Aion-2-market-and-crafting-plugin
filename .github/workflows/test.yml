@@ -15,5 +15,5 @@ jobs:
         with:
           node-version: 24
       - run: node --check app/server.js
-      - run: node --test app/test/market.test.js app/test/inventory.test.js app/test/me.test.js app/test/alerts.test.js app/test/armory.test.js
+      - run: node --test app/test/market.test.js app/test/inventory.test.js app/test/me.test.js app/test/alerts.test.js app/test/armory.test.js app/test/gear.test.js
         working-directory: .
