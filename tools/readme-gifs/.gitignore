@@ -1,0 +1,7 @@
+# The recorder's working files: the overlay page, fonts, game screenshots, the demo app and its output
+stage/ui/
+stage/fonts/
+stage/*.png
+demo/
+out/
+__pycache__/

@@ -1,0 +1,242 @@
+{
+  "server": 1307,
+  "server_name": "Fregion (EU, Elyos)",
+  "faction": "elyos",
+  "quna_pack": {
+    "quna": 4000,
+    "eur": 44.49
+  },
+  "currency": "USD",
+  "my_kina_rate_quna_per_10m": null,
+  "class": "Ranger",
+  "class_mode": "auto",
+  "plan": {
+    "MainHand": {
+      "have": 4,
+      "goal": 6,
+      "skip": false
+    },
+    "SubHand": {
+      "have": 3,
+      "goal": 6,
+      "skip": false
+    },
+    "Gloves": {
+      "have": 0,
+      "goal": 2,
+      "skip": false
+    },
+    "Helmet": {
+      "have": 0,
+      "goal": 2,
+      "skip": false
+    },
+    "Necklace": {
+      "have": 1,
+      "goal": 4,
+      "skip": false
+    },
+    "Ring1": {
+      "have": 2,
+      "goal": 3,
+      "skip": false
+    },
+    "Shoulder": {
+      "have": 0,
+      "goal": 6,
+      "skip": false
+    },
+    "Torso": {
+      "have": 0,
+      "goal": 6,
+      "skip": false
+    },
+    "Pants": {
+      "have": 0,
+      "goal": 6,
+      "skip": false
+    },
+    "Boots": {
+      "have": 0,
+      "goal": 6,
+      "skip": false
+    },
+    "Cape": {
+      "have": 0,
+      "goal": 6,
+      "skip": false
+    },
+    "Earring1": {
+      "have": 0,
+      "goal": 6,
+      "skip": false
+    },
+    "Earring2": {
+      "have": 0,
+      "goal": 6,
+      "skip": false
+    },
+    "Ring2": {
+      "have": 0,
+      "goal": 6,
+      "skip": false
+    }
+  },
+  "character": {
+    "name": "Sampleton",
+    "serverId": 1307
+  },
+  "auto_sync": false,
+  "shop": {
+    "sel": [
+      "Gloves"
+    ],
+    "ticks": {},
+    "kina_have": 0,
+    "quna_have": 0,
+    "use_inventory": true
+  },
+  "sync": {
+    "at": 1792879246000,
+    "profile": {
+      "name": "Sampleton",
+      "serverId": 1307,
+      "serverName": "Fregion",
+      "region": "eu",
+      "className": "Ranger",
+      "level": 45,
+      "combatPower": null,
+      "gearScore": null,
+      "faction": "Elyos",
+      "portrait": null,
+      "page": null
+    },
+    "detected": {
+      "MainHand": {
+        "tier": 4,
+        "name": "Splendent White Dragon Lord Bow",
+        "enchant": 12,
+        "exceed": 0,
+        "icon": "/icon/110430097",
+        "dragon": true
+      },
+      "SubHand": {
+        "tier": 3,
+        "name": "White Dragon Lord Guard",
+        "enchant": 10,
+        "exceed": 0,
+        "icon": "/icon/115030093",
+        "dragon": true
+      },
+      "Helmet": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      },
+      "Shoulder": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      },
+      "Torso": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      },
+      "Gloves": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      },
+      "Pants": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      },
+      "Boots": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      },
+      "Cape": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      },
+      "Necklace": {
+        "tier": 1,
+        "name": "True Dragon Lord Necklace",
+        "enchant": 8,
+        "exceed": 0,
+        "icon": "/icon/310130015",
+        "dragon": true
+      },
+      "Earring1": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      },
+      "Earring2": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      },
+      "Ring1": {
+        "tier": 2,
+        "name": "Splendent True Dragon Lord Ring",
+        "enchant": 11,
+        "exceed": 0,
+        "icon": "/icon/310330113",
+        "dragon": true
+      },
+      "Ring2": {
+        "tier": 0,
+        "name": null,
+        "enchant": 0,
+        "exceed": 0,
+        "icon": null,
+        "dragon": false
+      }
+    },
+    "source": "game"
+  },
+  "proficiency": {
+    "Armorsmithing": null,
+    "Blacksmithing": null,
+    "Handicrafting": null,
+    "Alchemy": null
+  },
+  "xp_per_craft": {},
+  "history_days": 7,
+  "cheap_when_below_usual_percent": 5,
+  "expensive_when_above_usual_percent": 5,
+  "alerts": false,
+  "alerts_list": []
+}
