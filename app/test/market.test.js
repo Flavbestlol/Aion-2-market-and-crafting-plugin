@@ -137,22 +137,19 @@ test('ticking a step ticks the steps before it; unticking one unticks the ones a
   assert.equal('b:610530001:40' in ticks, false);
 });
 
-test('a ladder rung is bought instead of crafted when the Exchange is cheaper for the whole quantity', () => {
-  const { bestRung } = require('../compute');
-  // three rungs: 18 Splendent (craft 1.0M), 4.4 Expert's Splendent (2.5M more), 1.1 Artisan's Splendent (6.0M more)
-  const rungs = [{ makes: 18.4, cost: 1.0e6 }, { makes: 4.4, cost: 2.5e6 }, { makes: 1.1, cost: 6.0e6 }];
-  const offers = { 0: { cost: 4.3e6, unit: 240000, source: 'summary' }, 1: { cost: 3.0e6, unit: 600000, source: 'ladder', exact: true }, 2: { cost: 80e6, unit: 40e6, source: 'tracker', weak: true } };
-  const c = bestRung(rungs, k => offers[k] || null);
-  assert.equal(c.craftAll, 9.5e6);
-  assert.equal(c.k, 1, 'buying 5 Expert\'s Splendent for 3.0M beats crafting rungs 1–2 for 3.5M');
-  assert.equal(c.total, 3.0e6 + 6.0e6);
-  assert.equal(c.offer.saves, 0.5e6);
-  assert.equal(c.hint, null);
-  // nothing cheap enough: craft everything; a weak offer that would be cheaper is only a hint
-  const d = bestRung(rungs, k => (k === 2 ? { cost: 9.0e6, unit: 9e6, source: 'tracker', weak: true } : null));
-  assert.equal(d.k, -1);
-  assert.equal(d.offer, null);
-  assert.equal(d.hint.k, 2);
-  assert.equal(d.hint.saves, 0.5e6);
-  assert.equal(bestRung(rungs, () => null).k, -1);
+
+test('buy some, craft the rest: listings cheaper than crafting are bought, whole, cheapest first', () => {
+  const { pickListings } = require('../compute');
+  const L = [{ unit: 100, quantity: 5 }, { unit: 150, quantity: 4 }, { unit: 190, quantity: 50 }, { unit: 260, quantity: 1 }];
+  const a = pickListings(L, 18.4, 200);
+  assert.equal(a.bought, 9, 'the 50-stack would overshoot: 50×190 = 9,500 is more than crafting the 9.4 left (1,880)');
+  assert.equal(a.cost, 5 * 100 + 4 * 150);
+  assert.equal(a.used, 9);
+  assert.equal(a.saves, 9 * 200 - 1100);
+  const b = pickListings(L, 18.4, 200, new Set([L[0]]));
+  assert.equal(b.bought, 4, 'listings bought for an earlier step are not bought twice');
+  assert.equal(pickListings(L, 18.4, 90).bought, 0, 'nothing undercuts crafting');
+  assert.equal(pickListings([{ unit: 50, quantity: 20 }], 3, 100).bought, 0, 'a stack of 20 for 1,000 does not beat crafting 3 for 300');
+  const c = pickListings([{ unit: 50, quantity: 4 }], 3, 100);
+  assert.equal(c.bought, 4); assert.equal(c.used, 3); assert.equal(c.saves, 100, 'a stack of 4 for 200 beats crafting 3 for 300, one spare');
 });

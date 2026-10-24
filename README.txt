@@ -33,12 +33,15 @@ In the page:
     have beside them. "Steps one at a time" and the compact button show just the step you are on.
     Ticking a step ticks every step before it (that is how far you are); unticking one unticks it
     and the steps after it.
-    Craft or buy, rung by rung: for the Artisan item's ladder (Splendent → Expert's Splendent →
-    Artisan's Splendent), the plan buys a rung ready-made when the Exchange is cheaper than
-    crafting it and the rungs before it, for the whole quantity, from the item's own list when
-    you opened it in game. The step then says "Bought, not crafted: 18× … · 4.3M vs 5.1M to
-    craft", a crafted rung says what buying it would cost, and an hourly a2-tracker price that
-    looks cheaper only earns "May be cheaper to buy" - open the item's list to let the plan decide.
+    Buy some, craft the rest: for every step you craft, the plan buys each listing on that item's
+    own Exchange list that is cheaper than crafting one more of it, and crafts the rest; the step
+    says how many to buy, up to what price, how many to craft and what it saves. Open an item's
+    list in game for this; when the cheapest listing beats crafting but the list isn't known yet,
+    the step says "Check the Exchange" and the Market check box lists what to open.
+    Every bought line of a step shows how many to buy and up to what price, like the Buy tab.
+    Lines your bag already covers keep their full count, marked covered, with the price to buy more.
+    A highlighted warning says when prices are not the Exchange's own: start AION 2 with
+    "Play AION 2" in Flav-Toolkit's tray and open the Exchange before you buy.
   - "Show in overlay" in a piece's details sends it to the Flav-Toolkit overlay in game.
     In game, the overlay has a round helm icon by the minimap: click it to open or shrink
     the list, drag it to move it.
@@ -47,7 +50,7 @@ In the page:
     a price to sell at, how many are listed, or cheaper / pricier than usual by a percentage.
     Checked whenever the Exchange is seen in game and on every hourly refresh: a Windows
     notification, the dock's icon lights up with the item's picture, and the overlay's Alerts
-    tab shows them (pause, resume, remove there; adding needs typing, so that is on this page).
+    tab adds them too (type an item there; the keys go back to the game after) and lists them.
   - In game, a key refreshes the overlay's prices like its ↻ button: Ctrl+R by default (overlay
     settings: Ctrl+Shift+R, Alt+R or Off). It only works while the list is on screen; with the
     list away the key is the game's.

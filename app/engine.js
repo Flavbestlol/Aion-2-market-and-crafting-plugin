@@ -108,6 +108,16 @@ function createEngine(catalogue, opts) {
       .filter(x => x && x.quantityKnown !== false && Number(x.quantity) > 0);
     const candidates = id => (byItem.get(String(id)) || []).filter(r => r.calculable !== false && applicable(r) && usable(r) && (r.ingredients || []).length);
 
+    /* What one more of an item costs to craft right now, by the cheapest path for its inputs (bought at their cheapest
+       listing or crafted, as the plan does): null when it can't be crafted. For the buy-or-craft split of a step. */
+    function craftUnit(id) {
+      let best = null;
+      for (const r of candidates(id)) {
+        const a = analyze(r);
+        if (a.cost != null && (best == null || a.cost < best)) best = a.cost;
+      }
+      return best;
+    }
     function analyze(target) {
       const memo = new Map(), busy = new Set();
       function craftCost(r, depth) {
@@ -180,7 +190,7 @@ function createEngine(catalogue, opts) {
       res.steps = order.map(id => { const s = steps.get(id); return { ...s, rows: [...s.rows.values()] }; });
       return res;
     }
-    return { analyze, market };
+    return { analyze, market, craftUnit };
   }
 
   /* Dragon Gear chains: one per gear piece, six tiers each. */

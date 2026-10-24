@@ -386,23 +386,18 @@ function applySync(data, settings, result) {
 }
 
 /* Shopping list for the plan: what to buy (rounded up) and the crafting steps in order, per piece. */
-/* Where to stop crafting a ladder and buy instead. `rungs` are the ladder's crafting steps in order (each with `cost`,
-   the materials it buys, and `makes`, how many of its item the plan needs); `buy(k)` prices buying that many of rung k's
-   item on the Exchange, or null. Buying rung k replaces rungs 0..k (each feeds only the next), so the choice is the k
-   whose buy cost plus the rungs after it comes to the least; -1 means craft everything. An offer that is `weak` (not
-   enough listed, or an hourly a2-tracker price rather than the Exchange's own) never wins, but is reported as a hint.
-   Returns { k, total, craftAll, offer, hint }. */
-function bestRung(rungs, buy) {
-  const after = rungs.map((_, k) => rungs.slice(k + 1).reduce((t, r) => t + r.cost, 0));
-  const craftAll = rungs.reduce((t, r) => t + r.cost, 0);
-  let best = { k: -1, total: craftAll, craftAll, offer: null, hint: null };
-  for (let k = 0; k < rungs.length; k++) {
-    const o = buy(k); if (!o) continue;
-    const total = o.cost + after[k], saves = craftAll - total;
-    if (o.weak) { if (saves > 0 && (!best.hint || saves > best.hint.saves)) best.hint = { k, ...o, total, saves }; continue; }
-    if (total < best.total) best = { k, total, craftAll, offer: { k, ...o, total, saves }, hint: best.hint };
+/* Which listings to buy instead of crafting: every listing cheaper per item than crafting one (`craftUnit`), whole,
+   cheapest first, up to `need` (a listing bigger than what is left is taken only if it still costs less than crafting
+   what is left); `gone` are listings already bought for an earlier step. */
+function pickListings(listings, need, craftUnit, gone = new Set()) {
+  let left = need, bought = 0, cost = 0; const taken = [];
+  for (const l of listings) {
+    if (gone.has(l)) continue;
+    if (l.unit >= craftUnit || left <= 1e-9) break;
+    if (l.quantity <= left + 1e-9 || l.quantity * l.unit < left * craftUnit) { taken.push(l); bought += l.quantity; cost += l.quantity * l.unit; left -= l.quantity; }
   }
-  return best;
+  const used = Math.min(bought, need);
+  return { taken, bought, cost, used, saves: used * craftUnit - cost };
 }
 
 function shopping(data, settings, market = null, inventory = null) {
@@ -421,17 +416,57 @@ function shopping(data, settings, market = null, inventory = null) {
   const invFresh = !!(inventory && inventory.fresh());
   const useInv = invFresh && (settings.shop || {}).use_inventory !== false;
   const ownedOf = id => (invFresh ? inventory.owned(id) : null);
-  // What `n` of an item cost to buy outright: from the Exchange's own list when it was opened in game (exact, listings
-  // bought whole), else the cheapest listing seen times n when at least that many are listed (gear lists one per
-  // listing), else an hourly a2-tracker price or a short list, marked weak: shown, never acted on.
-  const buyCost = (id, n) => {
-    const need = Math.ceil(n - 1e-9); if (!(need > 0)) return null;
-    const lad = market ? market.costOf(id, need, 'kina') : null;
-    if (lad && lad.exact) return { cost: lad.cost, unit: lad.maxUnit, source: 'ladder', exact: true };
-    const live = market ? market.min(id, 'kina') : null;
-    if (live && live.count != null && live.count >= need) return { cost: live.price * need, unit: live.price, source: 'summary', exact: false };
-    const unit = live ? live.price : prices.now(id);
-    return unit != null ? { cost: unit * need, unit, source: live ? 'short' : 'tracker', exact: false, weak: true } : null;
+  /* Buy some, craft the rest. For each crafted step (top of the tree first), every listing on the item's own Exchange
+     list that is cheaper than crafting one more of it is bought, whole, cheapest first, up to what the plan needs; the
+     rest is crafted, and the materials of that step and of the steps feeding it shrink by what was bought. Without the
+     item's list (never opened in game, or older than 45 minutes) nothing changes, but a step whose cheapest listing
+     undercuts crafting says to open the list. The step carries `split` (what to buy) or `refresh` (what to open) or
+     `checked` (the list was seen and crafting wins). */
+  let takenOf = new Map(); // item -> listings already bought by an earlier tier of the same piece (each listing once)
+  const splitStage = (stage) => {
+    const byRecipe = new Map();
+    for (const x of stage) {
+      if (x.recipeId) byRecipe.set(x.recipeId, x);
+      x.orig = { makes: x.makes, attempts: x.attempts, rows: x.rows.map(r => r.count) };
+    }
+    const remove = (x, units, depth = 0) => {
+      if (!x || !(units > 1e-9) || depth > 12 || !(x.orig.makes > 0)) return;
+      const ratio = Math.min(units, x.makes) / x.orig.makes;
+      x.makes = Math.max(0, x.makes - ratio * x.orig.makes); x.attempts = Math.max(0, x.attempts - ratio * x.orig.attempts);
+      x.rows.forEach((row, i) => {
+        const d = ratio * x.orig.rows[i];
+        row.count = Math.max(0, row.count - d);
+        if (row.source === 'buy' || row.source === 'npc') row.cost = row.count * row.unit;
+        else if (row.recipeId && byRecipe.has(row.recipeId)) remove(byRecipe.get(row.recipeId), d, depth + 1);
+      });
+    };
+    for (let i = stage.length - 2; i >= 0; i--) { // the tier step itself (last) is the goal, not a candidate
+      const x = stage[i], need = x.makes;
+      if (!(need > 0.05) || x.method === 'convert') continue;
+      const cu = snap.craftUnit(x.id);
+      if (!(cu > 0)) continue;
+      const lad = market ? market.ladder(x.id, 'kina') : null;
+      if (lad && lad.listings.length) {
+        const gone = takenOf.get(x.id) || new Set();
+        const { taken, bought, cost, used, saves } = pickListings(lad.listings, need, cu, gone);
+        if (bought > 0 && saves > 0) {
+          const grouped = new Map();
+          for (const l of taken) { const k = l.unit + ':' + l.quantity; const g = grouped.get(k) || { unit: l.unit, quantity: l.quantity, count: 0 }; g.count++; grouped.set(k, g); }
+          for (const l of taken) gone.add(l); takenOf.set(x.id, gone);
+          // the steps that use this item say how much of it comes bought
+          for (const y of stage) for (const row of y.rows) if (row.recipeId && row.recipeId === x.recipeId) row.bought = row.count * (used / need);
+          x.split = { id: x.id, name: x.item, icon: x.icon, need, buy: bought, used, cost, maxUnit: taken[taken.length - 1].unit, listings: [...grouped.values()], craftRest: Math.max(0, need - used), craftUnit: cu, saves, ageMin: Math.round((Date.now() - lad.at) / 60000) };
+          remove(x, used);
+        } else x.checked = { min: lad.listings[0].unit, craftUnit: cu, ageMin: Math.round((Date.now() - lad.at) / 60000) };
+        continue;
+      }
+      const live = market ? market.min(x.id, 'kina') : null;
+      const price = live ? live.price : prices.now(x.id);
+      if (price != null && price < cu) {
+        const stale = !!(market && market.ladders.has(x.id + ':kina'));
+        x.refresh = { id: x.id, name: x.item, icon: x.icon, min: price, listed: live ? live.count : prices.listings(x.id), craftUnit: cu, need, why: stale ? 'stale' : live ? 'not-opened' : 'tracker' };
+      }
+    }
   };
   const items = {}, pieces = [];
   let buy = null;
@@ -440,9 +475,9 @@ function shopping(data, settings, market = null, inventory = null) {
     buy.set(id, (buy.get(id) || 0) + count);
   };
   const stepOut = (st, k, label) => ({
-    item: engine.name(st.itemId), icon: icon(st.itemId), lucky: st.lucky, base: st.baseItemId ? engine.name(st.baseItemId) : null, method: st.method, profession: st.profession, mastery: st.mastery,
+    id: String(st.itemId), recipeId: st.recipeId, item: engine.name(st.itemId), icon: icon(st.itemId), lucky: st.lucky, base: st.baseItemId ? engine.name(st.baseItemId) : null, method: st.method, profession: st.profession, mastery: st.mastery,
     chance: st.chance, attempts: st.attempts * k, makes: st.makes * k,
-    rows: st.rows.map(r => ({ id: r.itemId, name: engine.name(r.itemId), icon: icon(r.itemId), count: r.count * k, source: r.source, unit: r.unit, cost: r.source === 'buy' || r.source === 'npc' ? r.count * k * r.unit : 0, have: ownedOf(r.itemId) })),
+    rows: st.rows.map(r => ({ id: r.itemId, recipeId: r.recipeId || null, name: engine.name(r.itemId), icon: icon(r.itemId), count: r.count * k, source: r.source, unit: r.unit, cost: r.source === 'buy' || r.source === 'npc' ? r.count * k * r.unit : 0, have: ownedOf(r.itemId) })),
   });
   const withCost = st => { st.cost = st.rows.reduce((t, r) => t + (r.cost || 0), 0); return st; };
   for (const s of Slots.slotsFor(settings.class)) {
@@ -450,52 +485,33 @@ function shopping(data, settings, market = null, inventory = null) {
     if (r.skip || !ch) continue;
     const label = (s.pair ? { Earring: 'Earring', Ring: 'Ring' }[s.gear] + ' ' + s.n : s.id === 'MainHand' ? 'Main hand' : s.id === 'SubHand' ? 'Off-hand' : LABELS[s.gear] || s.gear);
     const cl = engine.climb(ch, snap), steps = [];
-    buy = new Map();
+    buy = new Map(); takenOf = new Map();
     let ok = true;
     for (const st of cl.stages) {
       if (st.tier <= r.have || st.tier > r.goal) continue;
       if (st.cost == null) { ok = false; break; }
       const a = st.artisan;
-      // The Artisan item's ladder: each rung is crafted from the one before. Buying a rung on the Exchange (for the whole
-      // quantity the plan needs, from its real list when it was opened in game) replaces it and every rung before it,
-      // when that comes to less than crafting them; the plan then starts at the next rung and says so.
-      let bought = null; // { k, ... } the rung bought instead of crafted (k = the top rung: the Artisan item itself)
-      if (a && a.source === 'craft' && a.ladderSteps.length) {
-        const rungs = a.ladderSteps.map(x => withCost(stepOut(x, a.count, label)));
-        const ids = a.ladderSteps.map(x => String(x.itemId));
-        const choice = bestRung(rungs, k => buyCost(ids[k], rungs[k].makes));
-        const alt = k => { const o = buyCost(ids[k], rungs[k].makes); return o ? { count: Math.ceil(rungs[k].makes - 1e-9), cost: o.cost, unit: o.unit, source: o.source, weak: !!o.weak, craft: rungs.slice(0, k + 1).reduce((t, x) => t + x.cost, 0) } : null; };
-        if (choice.offer) {
-          const k = choice.offer.k, o = choice.offer;
-          bought = { k, id: ids[k], name: engine.name(ids[k]), icon: icon(ids[k]), count: Math.ceil(rungs[k].makes - 1e-9), cost: o.cost, unit: o.unit, source: o.source, craft: rungs.slice(0, k + 1).reduce((t, x) => t + x.cost, 0), saves: o.saves };
-          for (let j = k + 1; j < rungs.length; j++) {
-            const x = rungs[j];
-            // the first rung still crafted takes the bought item as a bought input, and tells why
-            if (j === k + 1) { for (const row of x.rows) if (row.id === ids[k]) { row.source = 'buy'; row.unit = o.unit; row.cost = row.count * o.unit; } x.bought = bought; }
-            x.alt = alt(j);
-            steps.push(withCost(x));
-          }
-          addBuy(ids[k], bought.count, o.unit, false);
-        } else {
-          for (let k = 0; k < rungs.length; k++) { rungs[k].alt = alt(k); if (k === 0 && choice.hint) rungs[0].hint = { ...choice.hint, name: engine.name(ids[choice.hint.k]), count: Math.ceil(rungs[choice.hint.k].makes - 1e-9), craft: rungs.slice(0, choice.hint.k + 1).reduce((t, x) => t + x.cost, 0) }; steps.push(rungs[k]); }
-        }
-      }
-      for (const x of st.steps.slice(0, -1)) steps.push(withCost(stepOut(x, 1, label)));
-      const top = st.steps[st.steps.length - 1];
-      const out = stepOut(top, 1, label);
+      // This tier's steps in crafting order: the Artisan item's ladder (when it is crafted), the stage's own steps, then
+      // the tier step itself. Every crafted step can be partly bought instead (splitStage), and the buy list is the sum
+      // of what the steps still buy.
+      const stage = [];
+      if (a && a.source === 'craft') for (const x of a.ladderSteps) stage.push(stepOut(x, a.count, label));
+      for (const x of st.steps.slice(0, -1)) stage.push(stepOut(x, 1, label));
+      const out = stepOut(st.steps[st.steps.length - 1], 1, label);
       out.item = engine.name(st.itemId); out.icon = icon(st.itemId); out.tier = st.tier;
-      const artisanBought = a && (a.source === 'buy' || (bought && bought.k === a.ladderSteps.length - 1));
-      if (a) out.rows.unshift({ id: a.itemId, name: engine.name(a.itemId), icon: icon(a.itemId), count: a.count, source: artisanBought ? 'buy' : 'craft', unit: artisanBought && bought ? bought.unit : a.unit, cost: artisanBought ? a.count * (bought ? bought.unit : a.unit) : 0 });
-      if (artisanBought && bought) out.bought = bought;
-      if (st.previous) out.rows.unshift({ name: engine.name(st.previous), icon: icon(st.previous), count: 1, source: st.tier - 1 === r.have ? 'own' : 'craft' });
-      steps.push(withCost(out));
-      for (const m of st.materials) addBuy(m.itemId, m.count, m.unit, m.npc);
-      if (a && a.source === 'craft') {
-        // the ladder's materials, less those of the rungs bought instead of crafted
-        if (bought) { for (let j = bought.k + 1; j < a.ladderSteps.length; j++) for (const row of a.ladderSteps[j].rows) if ((row.source === 'buy' || row.source === 'npc') && String(row.itemId) !== bought.id) addBuy(row.itemId, row.count * a.count, row.unit, row.source === 'npc'); }
-        else for (const m of a.ladderMaterials) addBuy(m.itemId, m.count * a.count, m.unit, m.npc);
+      if (a) {
+        const ladderTop = a.source === 'craft' && a.ladderSteps.length ? a.ladderSteps[a.ladderSteps.length - 1].recipeId : null;
+        out.rows.unshift({ id: a.itemId, recipeId: ladderTop, name: engine.name(a.itemId), icon: icon(a.itemId), count: a.count, source: a.source === 'craft' ? 'craft' : 'buy', unit: a.unit, cost: a.source === 'craft' ? 0 : a.count * a.unit, have: ownedOf(a.itemId) });
       }
-      if (a && a.source === 'buy') addBuy(a.itemId, a.count, a.unit, false);
+      if (st.previous) out.rows.unshift({ name: engine.name(st.previous), icon: icon(st.previous), count: 1, source: st.tier - 1 === r.have ? 'own' : 'craft' });
+      stage.push(out);
+      splitStage(stage);
+      for (const x of stage) {
+        if (x.makes < 0.01 && !x.split) continue; // wholly replaced by a bought step after it
+        steps.push(withCost(x));
+        for (const row of x.rows) if ((row.source === 'buy' || row.source === 'npc') && row.count > 1e-9) addBuy(row.id, row.count, row.unit, row.source === 'npc');
+        if (x.split) addBuy(x.split.id, x.split.used, x.split.cost / x.split.buy, false);
+      }
     }
     pieces.push({ slot: s.id, label, have: r.have, goal: r.goal, icon: icon(ch.tiers[r.goal - 1].itemId), item: engine.name(ch.tiers[r.goal - 1].itemId), ok, steps, buy: [...buy].map(([id, count]) => ({ id, count })), kina: [...buy].reduce((t, [id, c]) => t + c * items[id].unit, 0) });
   }
@@ -507,6 +523,8 @@ function shopping(data, settings, market = null, inventory = null) {
   // Across the chosen pieces' steps, in order, what is owned is used up as the steps come: a stock of 20 covers the
   // first step that needs it, not every step. Each bought row gets `used` (from stock), `missing` (left to buy) and a
   // cost for the missing part; a step's cost follows. With the setting off, nothing is used and `missing` = `count`.
+  const usualOf = id => { const s = data.hist.get(String(id)); if (!s) return null; const v = [...s.values()].sort((x, y) => x - y); return v.length >= 24 ? v[v.length >> 1] : null; };
+  const verdictOf = pct => (pct == null ? null : pct >= settings.expensive_when_above_usual_percent ? 'pricey' : pct <= -settings.cheap_when_below_usual_percent ? 'cheap' : 'fair');
   const stock = new Map();
   for (const p of pieces) if (sel.includes(p.slot)) for (const st of p.steps) {
     for (const r of st.rows) {
@@ -520,14 +538,36 @@ function shopping(data, settings, market = null, inventory = null) {
     }
     st.cost = st.rows.reduce((t, r) => t + (r.cost || 0), 0);
   }
+  // Each bought line of each step gets the same buy plan the Buy tab shows, for what that step still needs: from the
+  // item's own Exchange list (exact, whole listings) taking the listings in step order (the first step that needs an
+  // item gets its cheapest listings, the next one the next ones), else the cheapest listing seen, else a2-tracker. A
+  // line already covered by what is in hand keeps its full count and gets the plan as a reference ("if you want more").
+  const cum = new Map(), coverOf = (id, n) => (n > 0 && market ? market.costOf(id, n, 'kina') : null);
+  for (const p of pieces) if (sel.includes(p.slot)) for (const st of p.steps) {
+    for (const r of st.rows) {
+      if (!(r.source === 'buy' || r.source === 'npc') || !(r.count > 0.05)) continue;
+      const covered = r.missing != null && r.missing <= 0.05, k = Math.ceil((covered ? r.count : r.missing) - 1e-9);
+      const usual = r.source === 'npc' ? null : usualOf(r.id);
+      if (r.source === 'npc') { r.plan = { buy: k, maxUnit: r.unit, cost: k * r.unit, npc: true, covered }; continue; }
+      const before = covered ? 0 : cum.get(r.id) || 0;
+      const all = coverOf(r.id, before + k), prior = coverOf(r.id, before);
+      if (all) {
+        const pct = usual && all.maxUnit ? (all.maxUnit - usual) / usual * 100 : null;
+        r.plan = { buy: k, maxUnit: all.maxUnit, cost: all.cost - (prior ? prior.cost : 0), exact: all.exact, source: 'ladder', usual, pct, verdict: verdictOf(pct), covered };
+      } else {
+        const pct = usual && r.unit ? (r.unit - usual) / usual * 100 : null;
+        r.plan = { buy: k, maxUnit: r.unit, cost: k * r.unit, exact: false, source: prices.source(r.id), floor: true, usual, pct, verdict: verdictOf(pct), covered };
+      }
+      if (!covered) { cum.set(r.id, before + k); r.cost = r.plan.cost; }
+    }
+    st.cost = st.rows.reduce((t, r) => t + (r.cost || 0), 0);
+  }
   const chosen = pieces.filter(p => sel.includes(p.slot));
   const merged = new Map();
   for (const p of chosen) for (const b of p.buy) { const x = merged.get(b.id) || { ...items[b.id], count: 0, for: [] }; x.count += b.count; x.for.push(p.label); merged.set(b.id, x); }
   // Where the Exchange's ladder was seen, the cost of N is the cheapest whole listings that cover N (a stack is bought
   // whole, so `bought` can exceed `qty`), and the plan says up to what unit price and how the stacks split; elsewhere the
   // cheapest price × N. The verdict compares the plan's dearest unit with the item's usual price (a2-tracker history).
-  const usualOf = id => { const s = data.hist.get(String(id)); if (!s) return null; const v = [...s.values()].sort((x, y) => x - y); return v.length >= 24 ? v[v.length >> 1] : null; };
-  const verdictOf = pct => (pct == null ? null : pct >= settings.expensive_when_above_usual_percent ? 'pricey' : pct <= -settings.cheap_when_below_usual_percent ? 'cheap' : 'fair');
   // `qty` is what the plan needs; `have` what the player owns (null when the inventory isn't known); `missing` what is
   // left to buy, and the cost and the ladder plan are for that. A line whose need is covered is `owned`.
   const buyList = [...merged.values()].map(b => {
@@ -536,7 +576,13 @@ function shopping(data, settings, market = null, inventory = null) {
     const missing = useInv && have ? Math.max(0, qty - have.total) : qty;
     const owned = useInv && !!have && missing === 0;
     const usual = b.npc ? null : usualOf(b.id);
-    if (owned) return { ...b, qty, have, missing, owned, cost: 0, exact: true, plan: usual ? { usual, pct: null, verdict: null, floor: true } : null };
+    if (owned) {
+      // covered by what is in hand: nothing to pay, but the prices stay, for buying more
+      const ref = !b.npc && market ? market.costOf(b.id, qty, 'kina') : null;
+      const pct = usual ? ((ref ? ref.maxUnit : b.unit) - usual) / usual * 100 : null;
+      return { ...b, qty, have, missing, owned, cost: 0, exact: !!(ref && ref.exact), source: ref ? 'ladder' : b.source, unit: ref && ref.listings.length ? ref.listings[0].unit : b.unit,
+        plan: ref ? { bought: ref.bought, maxUnit: ref.maxUnit, stacks: ref.listings, usual, pct, verdict: verdictOf(pct), floor: false, reference: true } : usual ? { usual, pct, verdict: verdictOf(pct), floor: true, reference: true } : null };
+    }
     const ladder = !b.npc && market ? market.costOf(b.id, missing, 'kina') : null;
     if (ladder) {
       const pct = usual && ladder.maxUnit ? (ladder.maxUnit - usual) / usual * 100 : null;
@@ -676,4 +722,4 @@ function tickStep(ticks, key, order) {
   else for (const k of order.slice(0, i + 1)) ticks[k] = 1;
 }
 
-module.exports = { kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, shopping, stepKeys, tickStep, bestRung, ROOT, DATA, PROFESSIONS, XP_TOTAL };
+module.exports = { kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, shopping, stepKeys, tickStep, pickListings, ROOT, DATA, PROFESSIONS, XP_TOTAL };

@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "market-crafting",
   "name": "Dragon Gear Prices",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "author": "Flavbest",
   "kind": "external",
   "run": {

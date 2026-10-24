@@ -157,6 +157,8 @@ function gearNow() {
 function shoppingNow() {
   const out = C.shopping(data, settings, market, inventory);
   out.alerts = alerts.list(); out.alertsRecent = alerts.recent;
+  // whether the Exchange can be read now: Flav-Toolkit running, the game read, its Exchange seen (for the warning)
+  out.feed = feed.info();
   const m = FX.money(settings, C.DATA), rate = report && report.rate.qunaPer10m;
   const series = (report && report.qunaSeries || []).filter(x => x != null).sort((a, b) => a - b);
   const usual = series.length > 24 ? series[series.length >> 1] : null;
@@ -344,6 +346,8 @@ const server = http.createServer(async (req, res) => {
         if (typeof body.class === 'string') { if (body.class === 'auto') s2.class_mode = 'auto'; else s2.class = body.class; }
         if (Object.keys(s2).length) applySettings(s2);
         if (typeof body.use_inventory === 'boolean') sh.use_inventory = body.use_inventory;
+        let alertError = null;
+        if (body.alert_add && typeof body.alert_add === 'object') { const r = alerts.add(body.alert_add); if (typeof r === 'string') alertError = r; else alerts.check('refresh'); }
         if (typeof body.alert_toggle === 'string') alerts.toggle(body.alert_toggle.slice(0, 40));
         if (typeof body.alert_remove === 'string') alerts.remove(body.alert_remove.slice(0, 40));
         if (body.kina_have != null) sh.kina_have = Math.max(0, Number(body.kina_have) || 0);
@@ -351,7 +355,7 @@ const server = http.createServer(async (req, res) => {
         const keys = Object.keys(sh.ticks); if (keys.length > 3000) for (const k of keys.slice(0, keys.length - 3000)) delete sh.ticks[k];
         C.saveSettings(settings);
         if (body.gear) return send(res, 200, gearNow());
-        return data ? send(res, 200, shoppingNow()) : send(res, 409, { error: 'no data yet' });
+        return data ? send(res, 200, { ...shoppingNow(), alertError }) : send(res, 409, { error: 'no data yet' });
       }
       if (p === '/api/quit') { send(res, 200, { ok: true }); setTimeout(() => process.exit(0), 200); return; }
       return send(res, 404, { error: 'not found' });
