@@ -10,6 +10,8 @@ const FX = require('./fx');
 const { Market } = require('./market');
 const { Inventory } = require('./inventory');
 const { Me } = require('./me');
+const { Feed } = require('./feed');
+const { Alerts } = require('./alerts');
 
 const PORT = 7317, HOST = '127.0.0.1';
 const UI = path.join(__dirname, 'ui');
@@ -21,6 +23,7 @@ let settings = C.loadSettings();
 const market = new Market(path.join(C.DATA, 'market.json')); // the Exchange as the game saw it, from Flav-Toolkit
 const inventory = new Inventory(path.join(C.DATA, 'inventory.json')); // the bag, storage and warehouse, from Flav-Toolkit
 const me = new Me(path.join(C.DATA, 'me.json')); // who is playing (name, server, class), from Flav-Toolkit
+const VERSION = (() => { try { return String(JSON.parse(fs.readFileSync(path.join(C.ROOT, 'addon.json'), 'utf8')).version || '0'); } catch { return '0'; } })();
 let data = null, report = null, busy = null, lastError = null, lastRefresh = 0, syncError = null, overlaySeq = 0; // overlaySeq: bumped by "Show in overlay"
 
 /* Money in the chosen currency: "$1,234", "€1,234", "1,234 SAR". */
@@ -39,6 +42,7 @@ async function refresh({ force = false, quiet = false } = {}) {
     report = C.computeState(data, settings, market);
     lastRefresh = Date.now();
     writeLog();
+    alerts.check('refresh');
     if (quiet || settings.alerts) await checkAlerts(quiet);
   } catch (e) { logErr(e); }
   busy = null;
@@ -78,6 +82,56 @@ function applyMe() {
     } catch (e) { logErr(e); }
   }, 1000);
 }
+/* One event from Flav-Toolkit, whichever way it came (its feed, or the tray's older posts to /api/market, /api/inventory
+   and /api/me): the Exchange, the bag, who is playing. Returns what changed, or null. */
+function fromCore(ev) {
+  if (!ev || typeof ev !== 'object') return null;
+  if (ev.type === 'inventory') return inventory.take(ev) ? 'inventory' : null;
+  if (ev.type === 'my_profile' || ev.type === 'my_server') { const ch = me.take(ev); if (ch) applyMe(); return ch ? 'me' : null; }
+  const changed = market.take(ev);
+  if (changed === 'summary' || changed === 'stats') { recompute(); alerts.check('exchange'); }
+  return changed;
+}
+/* What is known about an item right now, for the alerts: the Exchange's cheapest listing and count when seen within
+   the hour, else a2-tracker's hourly price; "usual" from the game's own 28-day average (the purchase dialog) or
+   a2-tracker's history median. */
+function lookup(id) {
+  const live = market.min(id, 'kina');
+  const q = data && data.quotes.get(String(id));
+  const tracker = q && q.currency === 'Kinah' ? Number(q.price) : null;
+  const price = live ? live.price : tracker > 0 ? tracker : null;
+  const listed = live && live.count != null ? live.count : q && q.listings != null ? Number(q.listings) : null;
+  const st = market.stats.get(String(id));
+  const hist = data && data.hist.get(String(id));
+  const med = hist ? [...hist.values()].sort((a, b) => a - b) : null;
+  const usual = st && st.average > 0 && Date.now() - st.at < 7 * 86400000 ? st.average : med && med.length >= 24 ? med[med.length >> 1] : null;
+  return price == null && listed == null ? null : { price, listed, usual, source: live ? live.source : tracker > 0 ? 'tracker' : null };
+}
+const itemName = id => (data && data.catalogue.items[String(id)] && data.catalogue.items[String(id)].name) || 'Item ' + id;
+const itemIcon = id => (data && data.catalogue.items[String(id)] && data.catalogue.items[String(id)].icon ? '/icon/' + id : null);
+const alerts = new Alerts({
+  settings, save: () => C.saveSettings(settings), lookup, name: itemName, icon: itemIcon,
+  fire: f => { toast(f.title, f.text); feed.notify(f.title, f.text, f.icon ? 'http://' + HOST + ':' + PORT + f.icon : null, 'alert'); },
+});
+/* The core's feed: this app reads it itself (feed.js). The tray's posts still arrive too for now; both land in fromCore. */
+const feed = new Feed({ version: VERSION, onEvent: fromCore, onStatus: () => { feed.note = report ? 'prices ' + Math.round((Date.now() - lastRefresh) / 60000) + ' min old' : 'loading prices'; } });
+
+/* Items by name, for the alerts' search box: up to 20, with the icon and what is known now. */
+function searchItems(q) {
+  if (!data) return [];
+  const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
+  if (!words.length) return [];
+  const out = [];
+  for (const [id, it] of Object.entries(data.catalogue.items)) {
+    const n = String(it.name || '').toLowerCase();
+    if (!words.every(w => n.includes(w))) continue;
+    out.push({ id, name: it.name, icon: it.icon ? '/icon/' + id : null, now: lookup(id) });
+    if (out.length >= 60) break;
+  }
+  out.sort((a, b) => (b.now ? 1 : 0) - (a.now ? 1 : 0) || a.name.length - b.name.length);
+  return out.slice(0, 20);
+}
+
 /* Everything the in-game overlay's Gear tab shows, small: one row per slot with its tiers' costs and verdict. */
 function gearNow() {
   const m = FX.money(settings, C.DATA);
@@ -102,6 +156,7 @@ function gearNow() {
 /* The shopping list plus what the page needs to show money, and whether Kina is cheap today. */
 function shoppingNow() {
   const out = C.shopping(data, settings, market, inventory);
+  out.alerts = alerts.list(); out.alertsRecent = alerts.recent;
   const m = FX.money(settings, C.DATA), rate = report && report.rate.qunaPer10m;
   const series = (report && report.qunaSeries || []).filter(x => x != null).sort((a, b) => a - b);
   const usual = series.length > 24 ? series[series.length >> 1] : null;
@@ -223,7 +278,7 @@ function send(res, code, body, type = 'application/json; charset=utf-8', extra =
 function readBody(req) {
   return new Promise((ok, bad) => { let b = ''; req.on('data', c => { b += c; if (b.length > 1e6) { bad(new Error('too big')); req.destroy(); } }); req.on('end', () => { try { ok(b ? JSON.parse(b) : {}); } catch (e) { bad(e); } }); });
 }
-const status = () => ({ busy, error: lastError, syncError, lastRefresh, hasReport: !!report, alerts: !!settings.alerts, market: market.status(), inventory: inventory.status(), me: me.status() });
+const status = () => ({ busy, error: lastError, syncError, lastRefresh, hasReport: !!report, alerts: !!settings.alerts, market: market.status(), inventory: inventory.status(), me: me.status(), feed: feed.info(), version: VERSION });
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -236,22 +291,18 @@ const server = http.createServer(async (req, res) => {
       if (req.headers['x-flav'] !== '1' || !String(req.headers['content-type'] || '').startsWith('application/json')) return send(res, 403, { error: 'forbidden' });
       const body = await readBody(req);
       if (p === '/api/refresh') { refresh({ force: !!body.force }); return send(res, 200, status()); }
-      if (p === '/api/market') {
-        // from Flav-Toolkit's market reader: the Exchange as the game sees it
-        const changed = market.take(body);
-        if (changed === 'summary' || changed === 'stats') recompute();
-        return send(res, changed ? 200 : 400, { ok: !!changed, market: market.status() });
+      if (p === '/api/market' || p === '/api/inventory' || p === '/api/me') {
+        // from Flav-Toolkit's tray (the older path; the feed brings the same events): the Exchange, the bag, who is playing
+        const changed = fromCore(body);
+        return send(res, changed ? 200 : 400, { ok: !!changed, market: market.status(), inventory: inventory.status(), me: me.status() });
       }
-      if (p === '/api/inventory') {
-        // from Flav-Toolkit's inventory reader: the bag, storage and warehouse as the game sent them
-        const changed = inventory.take(body);
-        return send(res, changed ? 200 : 400, { ok: !!changed, inventory: inventory.status() });
-      }
-      if (p === '/api/me') {
-        // from Flav-Toolkit: who is playing (name, server, class, level), as the game said at world entry
-        const changed = me.take(body);
-        if (changed) applyMe();
-        return send(res, changed ? 200 : 400, { ok: !!changed, me: me.status() });
+      if (p === '/api/alerts') {
+        // the player's own alerts: add { add: { item, kind, value } }, { remove: id }, { toggle: id }
+        let error = null;
+        if (body.add) { const r = alerts.add(body.add); if (typeof r === 'string') error = r; else alerts.check('refresh'); }
+        if (typeof body.remove === 'string') alerts.remove(body.remove.slice(0, 40));
+        if (typeof body.toggle === 'string') alerts.toggle(body.toggle.slice(0, 40));
+        return send(res, error ? 400 : 200, { error, alerts: alerts.list(), recent: alerts.recent });
       }
       if (p === '/api/settings') { applySettings(body); return send(res, 200, { settings, report }); }
       if (p === '/api/leveling') {
@@ -293,6 +344,8 @@ const server = http.createServer(async (req, res) => {
         if (typeof body.class === 'string') { if (body.class === 'auto') s2.class_mode = 'auto'; else s2.class = body.class; }
         if (Object.keys(s2).length) applySettings(s2);
         if (typeof body.use_inventory === 'boolean') sh.use_inventory = body.use_inventory;
+        if (typeof body.alert_toggle === 'string') alerts.toggle(body.alert_toggle.slice(0, 40));
+        if (typeof body.alert_remove === 'string') alerts.remove(body.alert_remove.slice(0, 40));
         if (body.kina_have != null) sh.kina_have = Math.max(0, Number(body.kina_have) || 0);
         if (body.quna_have != null) sh.quna_have = Math.max(0, Number(body.quna_have) || 0);
         const keys = Object.keys(sh.ticks); if (keys.length > 3000) for (const k of keys.slice(0, keys.length - 3000)) delete sh.ticks[k];
@@ -309,6 +362,8 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/shopping') return data ? send(res, 200, shoppingNow()) : send(res, 409, { error: 'no data yet' });
     if (p === '/api/gear') return send(res, 200, gearNow());
     if (p === '/api/overlay-seq') return send(res, 200, { show: overlaySeq });
+    if (p === '/api/alerts') return send(res, 200, { alerts: alerts.list(), recent: alerts.recent, kinds: Object.fromEntries(Object.entries(require('./alerts').KINDS).map(([k, v]) => [k, { words: v.words, unit: v.unit }])) });
+    if (p === '/api/items') return send(res, 200, { items: searchItems(url.searchParams.get('q')) });
     if (p.startsWith('/icon/')) {
       const id = p.slice(6);
       if (!/^\d{1,12}$/.test(id) && id !== 'quna') return send(res, 404, '');

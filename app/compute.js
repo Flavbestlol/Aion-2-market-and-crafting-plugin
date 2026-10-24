@@ -37,7 +37,8 @@ const DEFAULT_SETTINGS = {
   history_days: 7,
   cheap_when_below_usual_percent: 5,
   expensive_when_above_usual_percent: 5,
-  alerts: false,
+  alerts: false,     // the hourly check of the plan's pieces (a Windows notification when one turns cheap)
+  alerts_list: [],   // the player's own alerts on any item (alerts.js)
 };
 
 function loadSettings() {
@@ -52,6 +53,7 @@ function loadSettings() {
   out.xp_per_craft = s.xp_per_craft && typeof s.xp_per_craft === 'object' ? s.xp_per_craft : {};
   out.character = { ...DEFAULT_SETTINGS.character, ...(s.character || {}) };
   out.shop = { ...DEFAULT_SETTINGS.shop, ...(s.shop || {}) };
+  out.alerts_list = Array.isArray(s.alerts_list) ? s.alerts_list.filter(a => a && typeof a === 'object' && typeof a.id === 'string') : [];
   delete out.extra_slots;
   // v2 slot ids (Torso#1, Ring#2, Dagger#1…) -> the official site's slot names
   const MAP = { 'Helmet#1': 'Helmet', 'Shoulder#1': 'Shoulder', 'Torso#1': 'Torso', 'Gloves#1': 'Gloves', 'Pants#1': 'Pants', 'Boots#1': 'Boots', 'Cape#1': 'Cape', 'Necklace#1': 'Necklace', 'Earring#1': 'Earring1', 'Earring#2': 'Earring2', 'Ring#1': 'Ring1', 'Ring#2': 'Ring2', 'Guarder#1': 'SubHand' };
@@ -149,7 +151,8 @@ async function fetchAll(settings, progress, { force = false } = {}) {
   const read = new Set();
   const snap = engine.snapshot(id => { read.add(String(id)); const q = quotes.get(String(id)); return isCurrent(q, now) ? Number(q.price) : null; }, () => null);
   for (const c of engine.chains(null)) engine.climb(c, snap);
-  const ids = [...[...read].filter(id => quotes.has(id)), ...Object.keys(CHESTS)];
+  // the items the plan reads, the Kina Chests, and the items the player set alerts on (their "usual" price needs a history)
+  const ids = [...new Set([...[...read].filter(id => quotes.has(id)), ...Object.keys(CHESTS), ...(settings.alerts_list || []).map(a => String(a.item)).filter(id => quotes.has(id))])];
   const todo = ids.filter(id => force || ageMin(path.join(HIST, id + '.json')) >= 55);
   let done = 0;
   const worker = async () => {

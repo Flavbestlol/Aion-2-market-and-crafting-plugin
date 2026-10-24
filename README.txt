@@ -43,6 +43,11 @@ In the page:
     In game, the overlay has a round helm icon by the minimap: click it to open or shrink
     the list, drag it to move it.
   - Refresh prices, Alerts (hourly check + Windows notification; starts with Windows), Settings.
+  - Alerts of your own, on any item: type its name (icons help you pick), then a price to buy at,
+    a price to sell at, how many are listed, or cheaper / pricier than usual by a percentage.
+    Checked whenever the Exchange is seen in game and on every hourly refresh: a Windows
+    notification, the dock's icon lights up with the item's picture, and the overlay's Alerts
+    tab shows them (pause, resume, remove there; adding needs typing, so that is on this page).
   - In game, a key refreshes the overlay's prices like its ↻ button: Ctrl+R by default (overlay
     settings: Ctrl+Shift+R, Alt+R or Off). It only works while the list is on screen; with the
     list away the key is the game's.
@@ -56,7 +61,9 @@ data\market.json         The Exchange as last seen in game (via Flav-Toolkit), i
 data\inventory.json      Your bag, storage and warehouse as last read from the game (via Flav-Toolkit):
                          item ids and counts only. Yours; delete it any time.
 data\me.json             Who you are as the game last said it (name, server, class, level). Yours too.
-app\test\                node --test test\market.test.js test\inventory.test.js test\me.test.js
+The feed: the app reads Flav-Toolkit's event feed itself (feed.json in Flav-Toolkit's data folder, this PC
+                         only): the Exchange, your bag, who is playing; and raises its notes there.
+app\test\                node --test test\market.test.js test\inventory.test.js test\me.test.js test\alerts.test.js
                          (run with app\node\node.exe)
 
 Prices: the Exchange itself while you play, a2-tracker.com's public data otherwise.

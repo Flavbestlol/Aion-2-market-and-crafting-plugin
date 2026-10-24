@@ -230,6 +230,22 @@ table{width:100%;border-collapse:collapse}
 .know b{color:var(--text)}
 .todo{background:var(--info-bg);border-left:3px solid var(--info);color:#d3e6ff}
 .muted{color:var(--muted)}.faint{color:var(--faint)}
+/* alerts */
+.alert-add{padding:12px 14px;margin-bottom:10px}
+.arow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:relative}
+.arow input,.arow select{background:var(--bg2);border:1px solid var(--line2);border-radius:8px;padding:8px 10px;color:var(--text);font:inherit}
+#alQ{flex:1;min-width:240px}
+.aresults{position:absolute;left:0;top:calc(100% + 4px);z-index:5;min-width:320px;max-height:320px;overflow:auto;background:var(--bg2);border:1px solid var(--line2);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.aresults .ar{display:flex;align-items:center;gap:10px;padding:7px 10px;cursor:pointer;font-size:13px}
+.aresults .ar:hover{background:rgba(224,184,98,.1)}
+.aresults .ar img{width:26px;height:26px;border-radius:6px;background:#1b2130}
+.aresults .ar small{margin-left:auto;color:var(--faint);white-space:nowrap}
+.apick{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.apick .mi{font-weight:600}
+.altab td .st{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.altab .st.fired{background:var(--cheap-bg);color:var(--cheap)}.altab .st.armed{background:rgba(255,255,255,.06);color:var(--muted)}.altab .st.off{color:var(--faint)}
+.altab .x{color:var(--faint);cursor:pointer;padding:0 6px}.altab .x:hover{color:var(--pricey)}
+.altab .sw{cursor:pointer}
 .link{background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0;font-size:12.5px}
 
 /* profession panel */
@@ -333,6 +349,27 @@ footer li{margin:3px 0}
   <section>
     <div class="h"><h2>Your gear</h2><span class="hint">Click a bar to set the tier you own. Click the card for goal, details and materials.</span></div>
     <div class="board" id="board"></div>
+  </section>
+
+  <section class="alerts" id="alertsSec">
+    <div class="h"><h2>Alerts</h2><span class="hint">Any item on the Exchange: a price to buy at, a price to sell at, how many are listed, or cheaper / pricier than usual. Checked whenever the Exchange is seen in game and on every hourly refresh; a Windows notification and the dock's icon light up.</span></div>
+    <div class="card alert-add">
+      <div class="arow"><input id="alQ" placeholder="Type an item name… (e.g. Refining Stone)" autocomplete="off"><div class="aresults" id="alResults" hidden></div></div>
+      <div class="arow apick" id="alPick" hidden>
+        <div class="mi" id="alItem"></div>
+        <select id="alKind">
+          <option value="below">price at or under … Kina (buy)</option>
+          <option value="above">price at or over … Kina (sell)</option>
+          <option value="cheaper">cheaper than usual by … %</option>
+          <option value="pricier">pricier than usual by … %</option>
+          <option value="listed">at least … listed</option>
+          <option value="scarce">at most … listed</option>
+        </select>
+        <input id="alVal" type="number" min="0" step="any" placeholder="value" size="9">
+        <button class="btn primary" id="alAdd">Add alert</button>
+      </div>
+    </div>
+    <div class="card" id="alList"></div>
   </section>
 
   <details class="prof" id="prof">
@@ -705,7 +742,7 @@ function notes() {
 }
 
 function renderAll() {
-  header(); charCard(); classes();
+  header(); charCard(); classes(); alertsLoad();
   const vs = S.class ? verdicts() : [];
   if (S.class) summary(vs);
   board(vs);
@@ -713,6 +750,48 @@ function renderAll() {
   if ($('prof').open) profPanel();
   notes();
 }
+
+/* ---------- alerts ---------- */
+let alPicked = null, alT = null;
+const kinaOrCount = (k, v) => (['below', 'above'].includes(k) ? kfmt(v) + ' Kina' : ['cheaper', 'pricier'].includes(k) ? v + ' %' : fmt(v) + ' listed');
+async function alertsLoad() {
+  try { const r = await api('/api/alerts'); alertsTable(r.alerts, r.recent); } catch (e) { $('alList').innerHTML = '<div class="faint" style="padding:12px 14px">' + esc(e.message) + '</div>'; }
+}
+function alertsTable(list, recent) {
+  if (!list.length) { $('alList').innerHTML = '<div class="faint" style="padding:12px 14px">No alerts yet. Type an item name above, pick what to watch, and the app tells you when it happens.</div>'; return; }
+  $('alList').innerHTML = '<table class="tbl altab"><tr><th>Item</th><th>Tell me when</th><th>Now</th><th>Listed</th><th>Usual</th><th>State</th><th></th></tr>' + list.map(a => {
+    const n = a.now || {};
+    const state = !a.on ? 'off' : a.met ? 'fired' : 'armed';
+    return '<tr' + (a.on ? '' : ' class="skip"') + '><td><div class="mi">' + img(a.icon) + esc(a.name) + '</div></td><td>' + esc(a.words) + ' <b>' + esc(kinaOrCount(a.kind, a.value)) + '</b></td>' +
+      '<td>' + (n.price != null ? kfmt(n.price) + ' <span class="faint">' + (n.source === 'tracker' ? 'a2' : 'live') + '</span>' : '—') + '</td><td>' + (n.listed != null ? fmt(n.listed) : '—') + '</td><td>' + (n.usual ? kfmt(n.usual) + (n.pct != null ? ' <span class="' + (n.pct < 0 ? 'muted' : 'thin') + '">' + (n.pct > 0 ? '+' : '') + fmt(n.pct, 0) + '%</span>' : '') : '—') + '</td>' +
+      '<td><span class="st ' + state + '" title="' + (a.firedAt ? 'last fired ' + new Date(a.firedAt).toLocaleString() : 'not fired yet') + '">' + (state === 'fired' ? 'now' : state) + '</span></td>' +
+      '<td><span class="sw" data-t="' + esc(a.id) + '" title="' + (a.on ? 'Pause' : 'Resume') + '">' + (a.on ? '⏸' : '▶') + '</span><span class="x" data-x="' + esc(a.id) + '" title="Remove">✕</span></td></tr>';
+  }).join('') + '</table>' + (recent && recent.length ? '<div class="faint" style="padding:8px 14px">Last: ' + recent.slice(0, 3).map(r => esc(r.title) + ' (' + new Date(r.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')').join(' · ') + '</div>' : '');
+  for (const el of $('alList').querySelectorAll('[data-t]')) el.onclick = async () => { const r = await api('/api/alerts', { toggle: el.dataset.t }); alertsTable(r.alerts, r.recent); };
+  for (const el of $('alList').querySelectorAll('[data-x]')) el.onclick = async () => { const r = await api('/api/alerts', { remove: el.dataset.x }); alertsTable(r.alerts, r.recent); };
+}
+$('alQ').addEventListener('input', () => {
+  clearTimeout(alT);
+  const q = $('alQ').value.trim();
+  if (q.length < 2) { $('alResults').hidden = true; return; }
+  alT = setTimeout(async () => {
+    try {
+      const r = await api('/api/items?q=' + encodeURIComponent(q));
+      $('alResults').innerHTML = r.items.length ? r.items.map(it => '<div class="ar" data-id="' + esc(it.id) + '" data-name="' + esc(it.name) + '" data-icon="' + esc(it.icon || '') + '">' + img(it.icon) + esc(it.name) + '<small>' + (it.now && it.now.price != null ? kfmt(it.now.price) + ' Kina' + (it.now.listed != null ? ' · ' + fmt(it.now.listed) + ' listed' : '') : 'no price seen') + '</small></div>').join('') : '<div class="ar faint">Nothing called that</div>';
+      $('alResults').hidden = false;
+      for (const el of $('alResults').querySelectorAll('.ar[data-id]')) el.onclick = () => { alPicked = { id: el.dataset.id, name: el.dataset.name, icon: el.dataset.icon }; $('alItem').innerHTML = img(alPicked.icon) + esc(alPicked.name); $('alPick').hidden = false; $('alResults').hidden = true; $('alQ').value = alPicked.name; $('alVal').focus(); };
+    } catch (e) { toast(e.message); }
+  }, 220);
+});
+document.addEventListener('click', e => { if (!e.target.closest('.arow')) $('alResults').hidden = true; });
+$('alAdd').onclick = async () => {
+  if (!alPicked) return toast('Pick an item first');
+  const value = Number($('alVal').value);
+  if (!Number.isFinite(value) || $('alVal').value === '') return toast('Give it a number');
+  try { const r = await api('/api/alerts', { add: { item: alPicked.id, kind: $('alKind').value, value } }); if (r.error) return toast(r.error); alertsTable(r.alerts, r.recent); $('alVal').value = ''; toast('Alert added: ' + alPicked.name); }
+  catch (e) { toast(e.message); }
+};
+$('alVal').addEventListener('keydown', e => { if (e.key === 'Enter') $('alAdd').click(); });
 
 /* ---------- refresh / status ---------- */
 async function poll(onDone) {

@@ -6,7 +6,8 @@ By Flavbest. GPL-3.0.
 
 ## How it works
 
-- A small local app (`app/server.js`, Node.js) serves a page at `http://127.0.0.1:7317` on your PC only. It fetches prices from [a2-tracker.com](https://a2-tracker.com) and, while you play with Flav-Toolkit, gets the Exchange as the game itself downloads it, your bag, storage and warehouse, and who you are (name, server, class), all from Flav-Toolkit over that same local address. Nothing is sent to the game or its servers.
+- A small local app (`app/server.js`, Node.js) serves a page at `http://127.0.0.1:7317` on your PC only. It fetches prices from [a2-tracker.com](https://a2-tracker.com) and, while you play with Flav-Toolkit, reads its local event feed (`feed.js`): the Exchange as the game itself downloads it, your bag, storage and warehouse, and who you are (name, server, class). Nothing is sent to the game or its servers.
+- Alerts (`alerts.js`): any item, a price to buy or sell at, a listing count, or cheaper / pricier than usual; a Windows notification and a note on the feed with the item's picture.
 - Flav-Toolkit's hub starts and stops it (`addon.json`), and shows its shopping list over the game.
 - Your character's worn gear comes from the official AION 2 site, with only the character name and server sent, on your own setting.
 
