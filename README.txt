@@ -66,7 +66,7 @@ data\inventory.json      Your bag, storage and warehouse as last read from the g
 data\me.json             Who you are as the game last said it (name, server, class, level). Yours too.
 The feed: the app reads Flav-Toolkit's event feed itself (feed.json in Flav-Toolkit's data folder, this PC
                          only): the Exchange, your bag, who is playing; and raises its notes there.
-app\test\                node --test test\market.test.js test\inventory.test.js test\me.test.js test\alerts.test.js
+app\test\                node --test test\market.test.js test\inventory.test.js test\me.test.js test\alerts.test.js test\armory.test.js
                          (run with app\node\node.exe)
 
 Prices: the Exchange itself while you play, a2-tracker.com's public data otherwise.

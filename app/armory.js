@@ -9,6 +9,8 @@ const SEARCH = 'https://api-search.plaync.com/aion2global/search/v2/character';
 const INFO = 'https://aion2.plaync.com/api/character/info';
 const EQUIPMENT = 'https://aion2.plaync.com/api/character/equipment';
 const GAP = 1000, KEEP = 600000, HOLD = 600000;
+// Says who is asking, honestly. No Origin or Referer: the add-on is not the official site's own page.
+const HEADERS = { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://github.com/Flavbestlol/flav-toolkit)', Accept: 'application/json' };
 
 let last = 0, heldUntil = 0;
 const cache = new Map();
@@ -27,7 +29,7 @@ function get(url) {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 20000);
     let res;
     try {
-      res = await fetch(url, { signal: ctl.signal, headers: { referer: 'https://aion2.plaync.com/en-us/characters/index', origin: 'https://aion2.plaync.com', 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://github.com/Flavbestlol/flav-toolkit)', Accept: 'application/json' } });
+      res = await fetch(url, { signal: ctl.signal, headers: HEADERS });
     } finally { clearTimeout(t); }
     if (res.status === 403 || res.status === 429) { heldUntil = Date.now() + HOLD; throw new Error('The official site asked us to slow down; trying again in 10 min.'); }
     if (res.status === 404) throw new Error('Character not found on that server.');
@@ -63,4 +65,4 @@ async function lookup(name, serverId, { fresh = false } = {}) {
   return value;
 }
 
-module.exports = { lookup, server, serverList };
+module.exports = { lookup, server, serverList, HEADERS };
