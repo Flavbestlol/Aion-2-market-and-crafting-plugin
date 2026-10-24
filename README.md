@@ -20,7 +20,7 @@ With Flav-Toolkit: put this folder at `Addons\Market Crafting\` next to the `Fla
 ## Develop
 
 ```
-node --test app/test/market.test.js app/test/inventory.test.js app/test/me.test.js
+node --test app/test/market.test.js app/test/inventory.test.js app/test/me.test.js app/test/alerts.test.js app/test/armory.test.js
 ```
 
 Never commit `settings.json`, `data\`, `captures\`, a `.pcap` or a key file: they are the player's own, and `.gitignore` refuses them. Nothing personal in the code, docs or commits: public name "Flavbest" only.
