@@ -383,6 +383,25 @@ function applySync(data, settings, result) {
 }
 
 /* Shopping list for the plan: what to buy (rounded up) and the crafting steps in order, per piece. */
+/* Where to stop crafting a ladder and buy instead. `rungs` are the ladder's crafting steps in order (each with `cost`,
+   the materials it buys, and `makes`, how many of its item the plan needs); `buy(k)` prices buying that many of rung k's
+   item on the Exchange, or null. Buying rung k replaces rungs 0..k (each feeds only the next), so the choice is the k
+   whose buy cost plus the rungs after it comes to the least; -1 means craft everything. An offer that is `weak` (not
+   enough listed, or an hourly a2-tracker price rather than the Exchange's own) never wins, but is reported as a hint.
+   Returns { k, total, craftAll, offer, hint }. */
+function bestRung(rungs, buy) {
+  const after = rungs.map((_, k) => rungs.slice(k + 1).reduce((t, r) => t + r.cost, 0));
+  const craftAll = rungs.reduce((t, r) => t + r.cost, 0);
+  let best = { k: -1, total: craftAll, craftAll, offer: null, hint: null };
+  for (let k = 0; k < rungs.length; k++) {
+    const o = buy(k); if (!o) continue;
+    const total = o.cost + after[k], saves = craftAll - total;
+    if (o.weak) { if (saves > 0 && (!best.hint || saves > best.hint.saves)) best.hint = { k, ...o, total, saves }; continue; }
+    if (total < best.total) best = { k, total, craftAll, offer: { k, ...o, total, saves }, hint: best.hint };
+  }
+  return best;
+}
+
 function shopping(data, settings, market = null, inventory = null) {
   const Slots = require('./slots');
   const engine = createEngine(data.catalogue, { faction: settings.faction });
@@ -399,6 +418,18 @@ function shopping(data, settings, market = null, inventory = null) {
   const invFresh = !!(inventory && inventory.fresh());
   const useInv = invFresh && (settings.shop || {}).use_inventory !== false;
   const ownedOf = id => (invFresh ? inventory.owned(id) : null);
+  // What `n` of an item cost to buy outright: from the Exchange's own list when it was opened in game (exact, listings
+  // bought whole), else the cheapest listing seen times n when at least that many are listed (gear lists one per
+  // listing), else an hourly a2-tracker price or a short list, marked weak: shown, never acted on.
+  const buyCost = (id, n) => {
+    const need = Math.ceil(n - 1e-9); if (!(need > 0)) return null;
+    const lad = market ? market.costOf(id, need, 'kina') : null;
+    if (lad && lad.exact) return { cost: lad.cost, unit: lad.maxUnit, source: 'ladder', exact: true };
+    const live = market ? market.min(id, 'kina') : null;
+    if (live && live.count != null && live.count >= need) return { cost: live.price * need, unit: live.price, source: 'summary', exact: false };
+    const unit = live ? live.price : prices.now(id);
+    return unit != null ? { cost: unit * need, unit, source: live ? 'short' : 'tracker', exact: false, weak: true } : null;
+  };
   const items = {}, pieces = [];
   let buy = null;
   const addBuy = (id, count, unit, npc) => {
@@ -422,16 +453,45 @@ function shopping(data, settings, market = null, inventory = null) {
       if (st.tier <= r.have || st.tier > r.goal) continue;
       if (st.cost == null) { ok = false; break; }
       const a = st.artisan;
-      if (a && a.source === 'craft') for (const x of a.ladderSteps) steps.push(withCost(stepOut(x, a.count, label)));
+      // The Artisan item's ladder: each rung is crafted from the one before. Buying a rung on the Exchange (for the whole
+      // quantity the plan needs, from its real list when it was opened in game) replaces it and every rung before it,
+      // when that comes to less than crafting them; the plan then starts at the next rung and says so.
+      let bought = null; // { k, ... } the rung bought instead of crafted (k = the top rung: the Artisan item itself)
+      if (a && a.source === 'craft' && a.ladderSteps.length) {
+        const rungs = a.ladderSteps.map(x => withCost(stepOut(x, a.count, label)));
+        const ids = a.ladderSteps.map(x => String(x.itemId));
+        const choice = bestRung(rungs, k => buyCost(ids[k], rungs[k].makes));
+        const alt = k => { const o = buyCost(ids[k], rungs[k].makes); return o ? { count: Math.ceil(rungs[k].makes - 1e-9), cost: o.cost, unit: o.unit, source: o.source, weak: !!o.weak, craft: rungs.slice(0, k + 1).reduce((t, x) => t + x.cost, 0) } : null; };
+        if (choice.offer) {
+          const k = choice.offer.k, o = choice.offer;
+          bought = { k, id: ids[k], name: engine.name(ids[k]), icon: icon(ids[k]), count: Math.ceil(rungs[k].makes - 1e-9), cost: o.cost, unit: o.unit, source: o.source, craft: rungs.slice(0, k + 1).reduce((t, x) => t + x.cost, 0), saves: o.saves };
+          for (let j = k + 1; j < rungs.length; j++) {
+            const x = rungs[j];
+            // the first rung still crafted takes the bought item as a bought input, and tells why
+            if (j === k + 1) { for (const row of x.rows) if (row.id === ids[k]) { row.source = 'buy'; row.unit = o.unit; row.cost = row.count * o.unit; } x.bought = bought; }
+            x.alt = alt(j);
+            steps.push(withCost(x));
+          }
+          addBuy(ids[k], bought.count, o.unit, false);
+        } else {
+          for (let k = 0; k < rungs.length; k++) { rungs[k].alt = alt(k); if (k === 0 && choice.hint) rungs[0].hint = { ...choice.hint, name: engine.name(ids[choice.hint.k]), count: Math.ceil(rungs[choice.hint.k].makes - 1e-9), craft: rungs.slice(0, choice.hint.k + 1).reduce((t, x) => t + x.cost, 0) }; steps.push(rungs[k]); }
+        }
+      }
       for (const x of st.steps.slice(0, -1)) steps.push(withCost(stepOut(x, 1, label)));
       const top = st.steps[st.steps.length - 1];
       const out = stepOut(top, 1, label);
       out.item = engine.name(st.itemId); out.icon = icon(st.itemId); out.tier = st.tier;
-      if (a) out.rows.unshift({ name: engine.name(a.itemId), icon: icon(a.itemId), count: a.count, source: a.source === 'craft' ? 'craft' : 'buy', unit: a.unit, cost: a.source === 'craft' ? 0 : a.count * a.unit });
+      const artisanBought = a && (a.source === 'buy' || (bought && bought.k === a.ladderSteps.length - 1));
+      if (a) out.rows.unshift({ id: a.itemId, name: engine.name(a.itemId), icon: icon(a.itemId), count: a.count, source: artisanBought ? 'buy' : 'craft', unit: artisanBought && bought ? bought.unit : a.unit, cost: artisanBought ? a.count * (bought ? bought.unit : a.unit) : 0 });
+      if (artisanBought && bought) out.bought = bought;
       if (st.previous) out.rows.unshift({ name: engine.name(st.previous), icon: icon(st.previous), count: 1, source: st.tier - 1 === r.have ? 'own' : 'craft' });
       steps.push(withCost(out));
       for (const m of st.materials) addBuy(m.itemId, m.count, m.unit, m.npc);
-      if (a && a.source === 'craft') for (const m of a.ladderMaterials) addBuy(m.itemId, m.count * a.count, m.unit, m.npc);
+      if (a && a.source === 'craft') {
+        // the ladder's materials, less those of the rungs bought instead of crafted
+        if (bought) { for (let j = bought.k + 1; j < a.ladderSteps.length; j++) for (const row of a.ladderSteps[j].rows) if ((row.source === 'buy' || row.source === 'npc') && String(row.itemId) !== bought.id) addBuy(row.itemId, row.count * a.count, row.unit, row.source === 'npc'); }
+        else for (const m of a.ladderMaterials) addBuy(m.itemId, m.count * a.count, m.unit, m.npc);
+      }
       if (a && a.source === 'buy') addBuy(a.itemId, a.count, a.unit, false);
     }
     pieces.push({ slot: s.id, label, have: r.have, goal: r.goal, icon: icon(ch.tiers[r.goal - 1].itemId), item: engine.name(ch.tiers[r.goal - 1].itemId), ok, steps, buy: [...buy].map(([id, count]) => ({ id, count })), kina: [...buy].reduce((t, [id, c]) => t + c * items[id].unit, 0) });
@@ -613,4 +673,4 @@ function tickStep(ticks, key, order) {
   else for (const k of order.slice(0, i + 1)) ticks[k] = 1;
 }
 
-module.exports = { kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, shopping, stepKeys, tickStep, ROOT, DATA, PROFESSIONS, XP_TOTAL };
+module.exports = { kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, shopping, stepKeys, tickStep, bestRung, ROOT, DATA, PROFESSIONS, XP_TOTAL };

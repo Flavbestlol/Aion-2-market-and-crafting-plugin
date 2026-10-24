@@ -33,6 +33,12 @@ In the page:
     have beside them. "Steps one at a time" and the compact button show just the step you are on.
     Ticking a step ticks every step before it (that is how far you are); unticking one unticks it
     and the steps after it.
+    Craft or buy, rung by rung: for the Artisan item's ladder (Splendent → Expert's Splendent →
+    Artisan's Splendent), the plan buys a rung ready-made when the Exchange is cheaper than
+    crafting it and the rungs before it, for the whole quantity, from the item's own list when
+    you opened it in game. The step then says "Bought, not crafted: 18× … · 4.3M vs 5.1M to
+    craft", a crafted rung says what buying it would cost, and an hourly a2-tracker price that
+    looks cheaper only earns "May be cheaper to buy" - open the item's list to let the plan decide.
   - "Show in overlay" in a piece's details sends it to the Flav-Toolkit overlay in game.
     In game, the overlay has a round helm icon by the minimap: click it to open or shrink
     the list, drag it to move it.
