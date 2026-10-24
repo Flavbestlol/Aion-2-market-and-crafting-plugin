@@ -7,8 +7,11 @@ Dragon Gear Prices.bat   Double-click: (re)starts the app and opens it in your b
 In the page:
   - Your character: with Flav-Toolkit running, logging in to the game tells the app who you are
     (name, server, class, level: the game's own login record, nothing else) - nothing to type.
-    Its worn gear is then read from the official AION 2 site on every refresh, the same lookup
-    Flav-Toolkit's armory uses. Without Flav-Toolkit, type the name and pick the server there.
+    Its worn gear comes from the game too: the login tells which item is in each slot and how
+    far it is enchanted, so the owned tiers fill themselves ("Auto - from the game"); a swap
+    shows at your next login or zone change. Only when the game isn't being read does the app
+    ask the official AION 2 site (the Auto switch; or type the name, pick the server and press
+    "Read my gear").
     Class: yours, as the game says, by default; click another class to plan gear for it
     ("Back to my class" returns). The overlay's settings have the same choice ("Mine · Ranger").
     Each piece says where its tier comes from: "Auto - your gear" (the default) or
@@ -66,7 +69,7 @@ data\inventory.json      Your bag, storage and warehouse as last read from the g
 data\me.json             Who you are as the game last said it (name, server, class, level). Yours too.
 The feed: the app reads Flav-Toolkit's event feed itself (feed.json in Flav-Toolkit's data folder, this PC
                          only): the Exchange, your bag, who is playing; and raises its notes there.
-app\test\                node --test test\market.test.js test\inventory.test.js test\me.test.js test\alerts.test.js test\armory.test.js
+app\test\                node --test test\market.test.js test\inventory.test.js test\me.test.js test\alerts.test.js test\armory.test.js test\gear.test.js
                          (run with app\node\node.exe)
 
 Prices: the Exchange itself while you play, a2-tracker.com's public data otherwise.

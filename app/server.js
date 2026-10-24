@@ -37,7 +37,9 @@ async function refresh({ force = false, quiet = false } = {}) {
   busy = { step: 'Starting', done: 0, total: 1 }; lastError = null;
   try {
     data = await C.fetchAll(settings, (step, done, total) => { busy = { step, done, total }; }, { force });
-    if (settings.auto_sync && settings.character && settings.character.name) await syncGear(false);
+    // the worn gear: from the game's login list when it has been seen; the official site only when it hasn't and the
+    // game isn't being read now (then the next login brings the list)
+    if (!applyGameGear() && settings.auto_sync && settings.character && settings.character.name && !readingGame()) await syncGear(false);
     busy = { step: 'Calculating', done: 0, total: 1 };
     report = C.computeState(data, settings, market);
     lastRefresh = Date.now();
@@ -55,6 +57,22 @@ async function syncGear(fresh) {
   } catch (e) { syncError = e.message; }
   busy = prev;
 }
+/* The worn gear as the game's last login list said it, in applySync's shape, or null. */
+function gameGear() {
+  const worn = inventory.worn();
+  if (!worn || !inventory.fresh() || !data || !me.known()) return null;
+  const sv = Armory.server(me.serverId);
+  return C.gearFromGame(data, worn, { name: me.name, serverId: me.serverId, serverName: sv ? sv.name : null, region: sv ? sv.region : '', className: me.class, level: me.level, faction: sv ? sv.faction : 'Elyos' }, inventory.listAt);
+}
+/* Sets the owned tiers from the game's worn gear. True when it could. */
+function applyGameGear() {
+  const g = gameGear();
+  if (!g) return false;
+  try { C.applySync(data, settings, g); syncError = null; C.saveSettings(settings); } catch (e) { logErr(e); return false; }
+  return true;
+}
+/* Flav-Toolkit is reading the game right now: its login list will say what is worn, no website needed. */
+const readingGame = () => feed.state === 'connected' && !!feed.game;
 function setServer(id) {
   const sv = Armory.server(id); if (!sv) return false;
   const changed = settings.server !== sv.id;
@@ -78,7 +96,7 @@ function applyMe() {
     C.saveSettings(settings);
     try {
       if (moved) await refresh({});
-      else if (who && settings.auto_sync && data && !busy) await syncGear(true);
+      else if (who && data && !busy && !applyGameGear() && settings.auto_sync && !readingGame()) await syncGear(true);
     } catch (e) { logErr(e); }
   }, 1000);
 }
@@ -86,7 +104,11 @@ function applyMe() {
    and /api/me): the Exchange, the bag, who is playing. Returns what changed, or null. */
 function fromCore(ev) {
   if (!ev || typeof ev !== 'object') return null;
-  if (ev.type === 'inventory') return inventory.take(ev) ? 'inventory' : null;
+  if (ev.type === 'inventory') {
+    const kind = inventory.take(ev);
+    if (kind === 'list' && applyGameGear()) recompute(); // a login: what is worn now
+    return kind ? 'inventory' : null;
+  }
   if (ev.type === 'my_profile' || ev.type === 'my_server') { const ch = me.take(ev); if (ch) applyMe(); return ch ? 'me' : null; }
   const changed = market.take(ev);
   if (changed === 'summary' || changed === 'stats') { recompute(); alerts.check('exchange'); }
