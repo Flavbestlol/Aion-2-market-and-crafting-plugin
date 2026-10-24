@@ -591,4 +591,26 @@ function exactKinaPlan(offers, need, have, qunaHave, m, rates) {
   return out;
 }
 
-module.exports = { kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, shopping, ROOT, DATA, PROFESSIONS, XP_TOTAL };
+/* The tick keys of a shopping list's steps, in the order the list shows them: the Kina step first (when Kina must be
+   bought), then each chosen piece's steps. A key names what a step makes, not its number, so a tick stays on the right
+   step when prices change the route; the overlay and list.html build the same keys. */
+function stepKeys(list) {
+  const keys = [];
+  if (list && list.kina && list.kina.need) keys.push('k:' + Math.round(list.kina.need / 1e6));
+  const name = st => (st.method || '') + '>' + (st.tier ? 'T' + st.tier + ' ' : '') + st.item;
+  for (const p of (list && list.chosen) || []) p.steps.forEach((st, n) => {
+    const me = name(st), nth = p.steps.slice(0, n).filter(x => name(x) === me).length;
+    keys.push(('s:' + p.slot + ':' + p.have + '-' + p.goal + ':' + me + (nth ? '#' + (nth + 1) : '')).slice(0, 190));
+  });
+  return keys;
+}
+/* A step ticked or unticked, keeping the steps in order: ticking a step ticks every step before it (that is how far you
+   are); unticking one unticks it and every step after it. A key that is not a step (a buy row) just flips. */
+function tickStep(ticks, key, order) {
+  const i = order.indexOf(key);
+  if (i < 0) { if (ticks[key]) delete ticks[key]; else ticks[key] = 1; return; }
+  if (ticks[key]) for (const k of order.slice(i)) delete ticks[k];
+  else for (const k of order.slice(0, i + 1)) ticks[k] = 1;
+}
+
+module.exports = { kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, shopping, stepKeys, tickStep, ROOT, DATA, PROFESSIONS, XP_TOTAL };

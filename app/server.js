@@ -27,7 +27,7 @@ let data = null, report = null, busy = null, lastError = null, lastRefresh = 0, 
 const cash = (v, m, d) => { if (v == null || !isFinite(v)) return '—'; const n = Number(v).toLocaleString('en-US', { minimumFractionDigits: d ?? (Math.abs(v) < 100 ? 2 : 0), maximumFractionDigits: d ?? (Math.abs(v) < 100 ? 2 : 0) }); return m.before ? m.sym + n : n + ' ' + m.sym; };
 const curOf = m => ({ code: m.code, sym: m.sym, before: m.before });
 
-const logErr = e => { lastError = e.message || String(e); try { fs.appendFileSync(ERR, new Date().toISOString() + ' ' + lastError + '\n'); } catch { /* ignore */ } };
+const logErr = e => { lastError = e.message || String(e); try { if (fs.existsSync(ERR) && fs.statSync(ERR).size > 1e6) fs.renameSync(ERR, ERR + '.old'); fs.appendFileSync(ERR, new Date().toISOString() + ' ' + lastError + '\n'); } catch { /* ignore */ } };
 
 async function refresh({ force = false, quiet = false } = {}) {
   if (busy) return;
@@ -199,6 +199,12 @@ function applySettings(patch) {
     else if (k === 'xp_per_craft') { for (const [id, x] of Object.entries(v)) { const n = Number(x); if (n > 0) settings.xp_per_craft[id] = n; else delete settings.xp_per_craft[id]; } }
     else if (k === 'my_kina_rate_quna_per_10m') settings[k] = Number(v) > 0 ? Number(v) : null;
     else if (k.endsWith('_percent')) { if (Number(v) > 0 && Number(v) < 100) settings[k] = Number(v); }
+    else if (k === 'plan') { // slot id -> { have 0..6, goal 1..6, skip }; nothing else is kept
+      if (!v || typeof v !== 'object') continue;
+      const plan = {};
+      for (const [id, r] of Object.entries(v).slice(0, 64)) { if (typeof id !== 'string' || id.length > 40 || !r || typeof r !== 'object') continue; const { have, goal, skip } = Slots.rangeOf({ [id]: r }, id); plan[id] = { have, goal, skip: !!r.skip && skip }; }
+      settings.plan = plan;
+    }
     else settings[k] = v;
     if (RECOMPUTE.includes(k)) needs = true;
   }
@@ -207,8 +213,11 @@ function applySettings(patch) {
 }
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' };
+/* What the pages may load and talk to: this app, and pictures from the official AION 2 CDN and portrait host. No frames
+   around the pages (another site cannot embed them), no plugins, no forms. */
+const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://assets.playnccdn.com https://profileimg.plaync.com https://fizz-download.playnccdn.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'";
 function send(res, code, body, type = 'application/json; charset=utf-8', extra = {}) {
-  res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...extra });
+  res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': CSP, ...extra });
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 function readBody(req) {
@@ -222,6 +231,7 @@ const server = http.createServer(async (req, res) => {
     const host = String(req.headers.host || '');
     if (host !== HOST + ':' + PORT && host !== 'localhost:' + PORT) return send(res, 403, { error: 'forbidden' });
     const url = new URL(req.url, 'http://' + host), p = url.pathname;
+    if (req.method !== 'GET' && req.method !== 'POST') return send(res, 405, { error: 'method' }, undefined, { Allow: 'GET, POST' });
     if (req.method === 'POST') {
       if (req.headers['x-flav'] !== '1' || !String(req.headers['content-type'] || '').startsWith('application/json')) return send(res, 403, { error: 'forbidden' });
       const body = await readBody(req);
@@ -268,7 +278,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/shop') {
         const sh = settings.shop;
         if (Array.isArray(body.sel)) sh.sel = body.sel.map(String).slice(0, 20);
-        if (typeof body.tick === 'string' && body.tick.length < 200) { if (sh.ticks[body.tick]) delete sh.ticks[body.tick]; else sh.ticks[body.tick] = 1; }
+        if (typeof body.tick === 'string' && body.tick.length < 200) C.tickStep(sh.ticks, body.tick, data ? C.stepKeys(C.shopping(data, settings, market, inventory)) : []);
         if (body.clear) sh.ticks = {};
         if (body.show) overlaySeq++;
         if (body.plan && typeof body.plan.slot === 'string' && Number.isInteger(body.plan.have) && body.plan.have >= 0 && body.plan.have <= 6) {

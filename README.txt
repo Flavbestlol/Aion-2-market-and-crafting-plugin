@@ -31,6 +31,8 @@ In the page:
     "Count what I own" (overlay settings, on by default) takes what you hold off the counts step by
     step: 158 Strong Leather with 20 in the bag reads "138x · 20 in hand". Off: full counts, what you
     have beside them. "Steps one at a time" and the compact button show just the step you are on.
+    Ticking a step ticks every step before it (that is how far you are); unticking one unticks it
+    and the steps after it.
   - "Show in overlay" in a piece's details sends it to the Flav-Toolkit overlay in game.
     In game, the overlay has a round helm icon by the minimap: click it to open or shrink
     the list, drag it to move it.

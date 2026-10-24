@@ -119,3 +119,20 @@ test('coverCheapest buys whole stacks and prefers a cheap overshoot to a dear ex
   assert.deepEqual([short.units, short.cost], [2, 5]);
   assert.deepEqual(coverCheapest([], 3), { picked: [], units: 0, cost: 0 });
 });
+
+test('ticking a step ticks the steps before it; unticking one unticks the ones after it', () => {
+  const { stepKeys, tickStep } = require('../compute');
+  const list = { kina: { need: 3_000_000 }, chosen: [{ slot: 'Helm', have: 0, goal: 6, steps: [
+    { method: 'craft', item: 'Strong Leather' }, { method: 'craft', item: 'Strong Leather' }, { method: 'craft', tier: 1, item: 'Helm' }] }] };
+  const order = stepKeys(list);
+  assert.deepEqual(order, ['k:3', 's:Helm:0-6:craft>Strong Leather', 's:Helm:0-6:craft>Strong Leather#2', 's:Helm:0-6:craft>T1 Helm']);
+  const ticks = {};
+  tickStep(ticks, order[2], order);
+  assert.deepEqual(Object.keys(ticks).sort(), order.slice(0, 3).sort(), 'step 3 ticked: the Kina step and steps 1–2 too');
+  tickStep(ticks, order[1], order);
+  assert.deepEqual(Object.keys(ticks), ['k:3'], 'step 2 unticked: steps 2 and 3 go, the Kina step stays');
+  tickStep(ticks, 'b:610530001:40', order);
+  assert.equal(ticks['b:610530001:40'], 1, 'a buy row just flips');
+  tickStep(ticks, 'b:610530001:40', order);
+  assert.equal('b:610530001:40' in ticks, false);
+});
