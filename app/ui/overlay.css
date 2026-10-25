@@ -315,6 +315,9 @@ small.pre { margin: 0 1px 0 0 !important; font-size: 0.72em !important; color: v
 .cob.buy { background: rgba(111, 227, 161, 0.1); box-shadow: inset 0 0 0 1px rgba(111, 227, 161, 0.3); } .cob.buy .cl { color: var(--done); }
 .cob.hint { background: rgba(242, 195, 91, 0.1); box-shadow: inset 0 0 0 1px rgba(242, 195, 91, 0.3); } .cob.hint .cl { color: var(--gold); }
 .cob.alt { padding: 0; color: var(--dim); }
+.cob.alt2 { background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); cursor: copy; } .cob.alt2 .cl { color: var(--ink-2); }
+.cob.buy[title] { cursor: copy; }
+.next .done-btn.in-hand { display: inline-block; opacity: 0.85; cursor: default; }
 .cost b { font: 600 12px var(--num); color: var(--gold-hi); }
 
 .prog { height: 3px; margin: 0 12px 8px; border-radius: 3px; background: rgba(0, 0, 0, 0.5); overflow: hidden; flex: none; }

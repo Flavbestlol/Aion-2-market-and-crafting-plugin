@@ -165,7 +165,7 @@
     for (const t of document.querySelectorAll(".tabs button")) t.setAttribute("aria-selected", String(t.dataset.v === view));
     let done = 0, all = 0;
     const ticks = L?.ticks || {};
-    const tick = (k) => { all++; if (ticks[k]) done++; return !!ticks[k]; };
+    const tick = (k, inHandAlready = false) => { all++; const on = inHandAlready || !!ticks[k]; if (on) done++; return on; }; // a step whose item is all in hand is done
     const rows = [];
     $("set").classList.toggle("on", settingsOpen);
     document.body.classList.toggle("setting", settingsOpen);
@@ -261,9 +261,9 @@
           p.steps.forEach((st, n) => {
             run += st.cost;
             const key = stepKey(p, n);
-            const on = tick(key);
+            const on = tick(key, !!st.covered);
             rows.push(stepCard({ key, no: String(n + 1), on, icon: st.icon, tier: st.tier, last: n === p.steps.length - 1,
-              title: stepTitle(st), meta: stepMeta(st), cob: craftOrBuy(st), ins: inputs(st.rows), details: () => stepDetails(st),
+              title: stepTitle(st), meta: stepMeta(st), cob: craftOrBuy(st), ins: inputs(st.covered ? [] : st.rows), details: () => stepDetails(st),
               cost: [h("span", {}, h("span", { text: "This step " }), b(`${kfmt(st.cost)} Kina`), side(toMoney(st.cost))), h("span", { text: `so far ${kfmt(run)} Kina` })] }));
           });
         }
@@ -386,7 +386,14 @@
   const stepTitle = (st) => (st.lucky && st.base ? [h("span", { text: `Craft ${st.base} until ` }), h("em", { text: st.item })]
     : st.tier ? [h("span", { text: "Craft " }), h("em", { text: `T${st.tier} ${st.item}` })]
       : [h("span", { text: `${st.method === "convert" ? "Convert to" : "Craft"} ${st.item}` })]);
-  const stepMeta = (st) => `${st.tier && st.tier > 1 ? "always succeeds" : `~${cnt(st.attempts)} tries · ${fmt(st.chance * 100, st.chance < 0.1 ? 1 : 0)}%`}${st.makes > 1.01 ? ` · makes ${cnt(st.makes)}` : ""}${st.profession ? ` · ${st.profession}${st.mastery ? ` ${st.mastery}` : ""}` : ""}`;
+  // What a step still asks: the tries and the count left once what is already made is taken off (`owned`: 10 of the 18
+  // crafted before a break are in the bag); a step whose item is all in hand says so instead.
+  const stepMeta = (st) => {
+    const prof = st.profession ? ` · ${st.profession}${st.mastery ? ` ${st.mastery}` : ""}` : "";
+    if (st.covered) return `✓ all ${cnt(st.owned.need)} in hand · nothing to craft${prof}`;
+    const own = st.owned ? ` · ${cnt(st.owned.used)} of ${cnt(st.owned.need)} in hand` : "";
+    return `${st.tier && st.tier > 1 ? "always succeeds" : `~${cnt(st.attempts)} tries · ${fmt(st.chance * 100, st.chance < 0.1 ? 1 : 0)}%`}${st.makes > 1.01 || st.owned ? ` · makes ${cnt(st.makes)}` : ""}${own}${prof}`;
+  };
   // Buy some, craft the rest (the app decides from the item's own Exchange list): a step that is partly or wholly bought
   // says how many to buy, in which listings, up to what price, how many are still crafted and what that saves; a step
   // whose cheapest listing undercuts crafting but whose list is not known (never opened, or older than 45 min) says to
@@ -402,18 +409,36 @@
         h("div", { class: "cbr" }, h("span", { class: "k", text: "Exchange" }), b(`${fmt(x.buy)}×`), h("span", { text: ` ≤ ${pfmt(x.maxUnit)} each · ${kfmt(x.cost)} Kina` }), h("small", { text: ` · ${listingsText(x.listings)}` })),
         all ? null : h("div", { class: "cbr" }, h("span", { class: "k", text: "Craft" }), b(`${cnt(x.craftRest)}×`), h("span", { text: ` at ~${pfmt(Math.round(x.craftUnit))} each` }))));
     }
-    if (st.refresh) {
-      const x = st.refresh;
-      const why = x.why === "stale" ? "its list is older than 45 minutes" : x.why === "tracker" ? "a2-tracker's hourly price says so" : "its list hasn't been opened yet";
-      out.push(h("div", { class: "cob hint", title: "Open the item on the Exchange in game: Flav-Toolkit reads its listings and the plan decides how many to buy and how many to craft. Click to copy the name for the search." , onclick: (e) => { e.stopPropagation(); copy(x.name); } },
-        h("div", { class: "cbh" }, h("span", { class: "cl", text: "Check the Exchange" }), h("span", { class: "sv", text: "↻ open its list" })),
-        h("div", { class: "cbr" }, h("span", { text: `${x.name} from ` }), b(pfmt(x.min)), h("span", { text: ` vs ~${pfmt(Math.round(x.craftUnit))} to craft${x.listed != null ? ` · ${fmt(x.listed)} listed` : ""} — ${why}` }))));
-    }
-    if (st.checked && !st.split) {
-      out.push(h("div", { class: "cob alt", text: `Exchange checked ${minsAgo(st.checked.ageMin)}: cheapest ${pfmt(st.checked.min)} vs ~${pfmt(Math.round(st.checked.craftUnit))} to craft · crafting wins` }));
-    }
+    if (st.compare && !st.split) out.push(compareCard(st.compare));
     return out;
   };
+  // Craft or buy, for what the step still has to make (the app does the sums, `compare`): crafting the rest at today's
+  // prices (materials in hand counted at their price: they could go elsewhere) against buying them on the Exchange.
+  // Buying cheaper: say so, and to skip the step; from the cheapest listing only (the item's list not opened), that is a
+  // floor, so open the list for the exact count. No price seen: open it to compare. A click copies the name.
+  const buyTag = (y) => (y.source === "ladder" ? h("span", { class: "tag ex", title: `From its own list on the Exchange, opened in game ${minsAgo(y.ageMin)}: the cheapest listings that cover this`, text: y.exact ? "exact" : "list" })
+    : y.source === "live" ? h("span", { class: "tag lv", title: "The cheapest listing the game saw on the Exchange; open the item's list for the exact price of all of them", text: "live" })
+      : h("span", { class: "tag old", title: "a2-tracker's hourly price: not the Exchange right now", text: "hourly" }));
+  function compareCard(c) {
+    const y = c.buy, n = cnt(c.left);
+    const craft = h("div", { class: "cbr" }, h("span", { class: "k", text: "Craft" }), b(`${n}×`), h("span", { text: ` ~${pfmt(Math.round(c.craftUnit))} each · ${kfmt(c.craftCost)}` }), h("small", { text: " · failed tries included" }));
+    const copyName = (e) => { e.stopPropagation(); copy(c.name); };
+    if (!y) {
+      return h("div", { class: "cob hint", title: "Open it on the Exchange in game: Flav-Toolkit reads its listings and the plan compares. Click to copy the name for the search.", onclick: copyName },
+        h("div", { class: "cbh" }, h("span", { class: "cl", text: "Craft or buy?" }), h("span", { class: "sv", text: "↻ open its list" })),
+        h("div", { class: "cbr" }, h("span", { class: "k", text: "Market" }), h("span", { text: "no price seen yet: open it on the Exchange in game" })), craft);
+    }
+    const floor = y.source !== "ladder";
+    const market = h("div", { class: "cbr" }, h("span", { class: "k", text: "Market" }), b(`${fmt(y.count)}×`),
+      h("span", { text: ` ${floor ? "from" : "≤"} ${pfmt(floor ? y.from : y.upTo)} each · ${kfmt(y.cost)}${floor ? " or more" : ""}` }), buyTag(y), y.listed != null ? h("small", { text: ` · ${fmt(y.listed)} listed` }) : null);
+    if (c.better === "buy") {
+      return h("div", { class: `cob ${floor ? "hint" : "buy"}`, title: floor ? "Only the cheapest listing is known: open the item's list on the Exchange in game for the exact cost of all of them. Click to copy the name." : "Buy them on the Exchange and tick this step off.", onclick: copyName },
+        h("div", { class: "cbh" }, h("span", { class: "cl", text: "Buy it, skip this step" }), h("span", { class: "sv", text: `saves ~${kfmt(c.saves)}` })),
+        market, craft, floor ? h("div", { class: "cbr" }, h("small", { text: "open its list in game for the exact price · click to copy the name" })) : null);
+    }
+    return h("div", { class: "cob alt2", onclick: copyName, title: "Click to copy the name" },
+      h("div", { class: "cbh" }, h("span", { class: "cl", text: "Crafting is cheaper" }), h("span", { class: "sv", text: `saves ~${kfmt(c.saves)}` })), craft, market);
+  }
   // A highlighted warning above the Buy and Steps tabs when the prices are not the Exchange's own right now: what is
   // missing (Flav-Toolkit, the game started through it, the Exchange opened) and what to do.
   function priceWarning() {
@@ -456,12 +481,15 @@
   // sums; with "count what I own" off, missing = count and `used` is 0). Fully covered: crossed out as in hand.
   const bought = (r) => r.source === "buy" || r.source === "npc";
   const inHand = (r) => !!(r.have && bought(r) && r.missing != null && r.missing <= 0.05);
+  // a line made in an earlier step whose item is already all in hand (`inHand`: what of it the bag holds)
+  const madeInHand = (r) => !bought(r) && r.inHand > 0.05 && r.inHand >= r.count - 0.5;
   const haveNote = (r) => (!r.have || !bought(r) || r.have.total <= 0 || inHand(r) ? null
     : h("span", { class: "hv", title: `Read from the game: ${whereHave(r.have)}`, text: r.used > 0 ? `${cnt(r.used)} in hand` : `have ${fmt(r.have.total)}` }));
   // the count to show: what is left to get once the stock in hand is used; a fully covered row keeps its full count, struck out
   const need = (r) => (inHand(r) || r.missing == null || !(r.used > 0) ? r.count : r.missing);
-  const inputs = (rs, copies = false) => rs.map((r) => h("span", { class: `in ${srcClass(r)}${inHand(r) ? " covered" : ""}${copies ? " cp" : ""}`, title: inHand(r) ? `Covered by what is in hand: ${whereHave(r.have)}` : copies ? `Click to copy "${r.name}"` : null, onclick: copies ? (e) => { e.stopPropagation(); copy(r.name); } : null },
-    pic(r.icon, ""), h("span", { text: `${cnt(need(r))}× ${r.name}` }), inHand(r) ? h("span", { class: "okc", text: "✓" }) : null, haveNote(r), r.bought > 0.05 ? h("span", { class: "hv bt", title: "Bought on the Exchange instead of crafted (see that step)", text: `${cnt(r.bought)} bought` }) : null));
+  const inputs = (rs, copies = false) => rs.map((r) => h("span", { class: `in ${srcClass(r)}${inHand(r) || madeInHand(r) ? " covered" : ""}${copies ? " cp" : ""}`, title: inHand(r) ? `Covered by what is in hand: ${whereHave(r.have)}` : copies ? `Click to copy "${r.name}"` : null, onclick: copies ? (e) => { e.stopPropagation(); copy(r.name); } : null },
+    pic(r.icon, ""), h("span", { text: `${cnt(need(r))}× ${r.name}` }), inHand(r) || madeInHand(r) ? h("span", { class: "okc", text: "✓" }) : null, haveNote(r),
+    !bought(r) && r.inHand > 0.05 && !madeInHand(r) ? h("span", { class: "hv", title: r.have ? `Read from the game: ${whereHave(r.have)}` : null, text: `${cnt(r.inHand)} in hand` }) : null, r.bought > 0.05 ? h("span", { class: "hv bt", title: "Bought on the Exchange instead of crafted (see that step)", text: `${cnt(r.bought)} bought` }) : null));
   // A step: a click on the card opens its details, the round box on the right ticks it off.
   function stepCard({ key, no, on, icon, tier, k0, last, title, meta, ins, cost, details, cob, forceOpen = false }) {
     const open = forceOpen || opened.has(key);
@@ -484,7 +512,12 @@
         : h("span", { class: "tag old", title: "a2-tracker's hourly price: not the Exchange right now. Start AION 2 with Play in Flav-Toolkit and open the Exchange", text: "hourly" }));
   const buyLine = (r) => {
     const p = r.plan;
-    if (!p) return h("div", { class: "dn", text: r.source === "own" ? "the one you own" : r.bought > 0.05 ? `${cnt(r.bought)} bought on the Exchange · the rest made in an earlier step` : "made in an earlier step" });
+    if (!p && madeInHand(r)) return h("div", { class: "dn cov" }, h("span", { class: "okc", text: "✓ in hand" }), h("span", { text: r.have ? ` · ${whereHave(r.have)}` : "" }));
+    if (!p) {
+      const parts = [r.inHand > 0.05 ? `${cnt(r.inHand)} in hand` : null, r.bought > 0.05 ? `${cnt(r.bought)} bought on the Exchange` : null];
+      const from = parts.some(Boolean) ? `${parts.filter(Boolean).join(" · ")} · the rest made in an earlier step` : "made in an earlier step";
+      return h("div", { class: "dn", text: r.source === "own" ? "the one you own" : from });
+    }
     if (p.covered) return [
       h("div", { class: "dn cov" }, h("span", { class: "okc", text: "✓ covered" }), h("span", { text: ` · in hand ${whereHave(r.have)}` })),
       h("div", { class: "dn" }, h("span", { text: "more: " }), b(`≤ ${pfmt(p.maxUnit)}`), h("span", { text: " each" }), srcTag(p), verdictTag(p)),
@@ -493,10 +526,15 @@
       h("span", { text: ` each · ${kfmt(p.cost)} Kina · ${cash(toMoney(p.cost))}` }), srcTag(p), verdictTag(p));
   };
   function stepDetails(st) {
+    // all of it in hand already: what it makes and where it is, and no materials (none are needed)
+    if (st.covered) return [
+      h("div", { class: "dl" }, h("span", { class: "dk", text: "Makes" }), pic(st.icon, "pic xs"), copyable(st.item)),
+      h("div", { class: "dl covered" }, h("span", { class: "dk", text: "In hand" }), h("div", { class: "dm" }, h("div", { class: "dn cov" }, h("span", { class: "okc", text: `✓ ${cnt(st.owned.need)} needed` }), h("span", { text: st.owned.have ? ` · ${whereHave(st.owned.have)}` : "" })))),
+    ];
     return [
       h("div", { class: "dl" }, h("span", { class: "dk", text: "Makes" }), pic(st.icon, "pic xs"), copyable(st.lucky && st.base ? st.item : st.item)),
       st.lucky && st.base ? h("div", { class: "dl" }, h("span", { class: "dk", text: "Craft" }), copyable(st.base), h("span", { class: "dn", text: "until it comes out Splendent" })) : null,
-      ...st.rows.map((r) => h("div", { class: `dl ${srcClass(r)}${r.plan && r.plan.covered ? " covered" : ""}` }, h("span", { class: "dq", text: `${cnt(r.plan && r.plan.covered ? r.count : need(r))}×` }), pic(r.icon, "pic xs"),
+      ...st.rows.map((r) => h("div", { class: `dl ${srcClass(r)}${(r.plan && r.plan.covered) || madeInHand(r) ? " covered" : ""}` }, h("span", { class: "dq", text: `${cnt(r.plan && r.plan.covered ? r.count : need(r))}×` }), pic(r.icon, "pic xs"),
         h("div", { class: "dm" }, copyable(r.name), r.plan && r.plan.covered ? null : haveNote(r), buyLine(r)))),
     ];
   }
@@ -645,8 +683,9 @@
     if (kk) todo.push({ key: kk, kina: true });
     for (const p of L.chosen) p.steps.forEach((st, n) => todo.push({ key: stepKey(p, n), st, p, n }));
     if (!todo.length) return;
-    const first = todo.findIndex((t) => !ticks[t.key]);
-    const done = todo.filter((t) => ticks[t.key]).length;
+    const isDone = (t) => !!ticks[t.key] || !!(t.st && t.st.covered); // all in hand already: nothing to do there
+    const first = todo.findIndex((t) => !isDone(t));
+    const done = todo.filter(isDone).length;
     if (first < 0) {
       rows.push(h("div", { class: "next" }, h("div", { class: "lbl", text: "All done" }), h("div", { class: "t", text: "Everything on the list is ticked off." })));
       return;
@@ -666,12 +705,12 @@
     } else {
       const st = t.st;
       const run = t.p.steps.slice(0, t.n + 1).reduce((s, x) => s + x.cost, 0);
-      rows.push(stepCard({ key: t.key, no: String(t.n + 1), on: !!ticks[t.key], icon: st.icon, tier: st.tier, last: true, forceOpen: true,
-        title: stepTitle(st), meta: stepMeta(st), cob: craftOrBuy(st), ins: inputs(st.rows), details: () => stepDetails(st),
+      rows.push(stepCard({ key: t.key, no: String(t.n + 1), on: isDone(t), icon: st.icon, tier: st.tier, last: true, forceOpen: true,
+        title: stepTitle(st), meta: stepMeta(st), cob: craftOrBuy(st), ins: inputs(st.covered ? [] : st.rows), details: () => stepDetails(st),
         cost: [h("span", {}, h("span", { text: "This step " }), b(`${kfmt(st.cost)} Kina`), side(toMoney(st.cost))), h("span", { text: `so far ${kfmt(run)} Kina` })] }));
     }
     rows.push(h("div", { class: "next slim" }, h("div", { class: "bar" }, h("i", { style: `width:${(done / todo.length) * 100}%` })),
-      h("div", { class: "foot" }, h("span", { text: `${done} of ${todo.length} done` }), h("button", { type: "button", class: "done-btn", text: ticks[t.key] ? "Undo" : "Done ✓", onclick: () => { peek = 0; change({ tick: t.key }); } }))));
+      h("div", { class: "foot" }, h("span", { text: `${done} of ${todo.length} done` }), t.st && t.st.covered ? h("span", { class: "done-btn in-hand", text: "In hand ✓" }) : h("button", { type: "button", class: "done-btn", text: ticks[t.key] ? "Undo" : "Done ✓", onclick: () => { peek = 0; change({ tick: t.key }); } }))));
   }
 
   // ---- the bar tooltip ----------------------------------------------------

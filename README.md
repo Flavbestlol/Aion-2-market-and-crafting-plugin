@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.16.2" src="https://img.shields.io/badge/version-0.16.2-f2c35b?style=for-the-badge">
+  <img alt="Version 0.16.3" src="https://img.shields.io/badge/version-0.16.3-f2c35b?style=for-the-badge">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-1f6fd6?style=for-the-badge">
   <a href="https://github.com/Flavbestlol/flav-toolkit"><img alt="A Flav-Toolkit add-on" src="https://img.shields.io/badge/a%20Flav--Toolkit-add--on-ff8540?style=for-the-badge"></a>
   <img alt="Vibe coded" src="https://img.shields.io/badge/vibe-coded-6fe3a1?style=for-the-badge">
@@ -67,6 +67,8 @@ Dragon Gear Prices is an add-on for [Flav-Toolkit](https://github.com/Flavbestlo
 
 - **Step by step**: get the Kina, then each craft in order with its cost, its tries and its materials.
 - **Buy some, craft the rest.** When some listings on the Market are cheaper than crafting one more, the step says how many to buy, up to what price, how many to craft and what it saves.
+- **What you already made counts.** Crafted items in your bag (10 of the 18 Splendent gloves, made before a break) come off their step: fewer to make, fewer tries, and the next step says they're in hand. A step you have all of is done by itself.
+- **Craft or buy?** Every crafting step compares crafting the rest with buying it on the Market, and says to buy and skip the step when that's cheaper.
 - **Click a name to copy it**, then paste it in the Exchange search.
 - **Tick as you go.** Ticking a step ticks the ones before it, and *one step at a time* shows just the step you're on.
 
