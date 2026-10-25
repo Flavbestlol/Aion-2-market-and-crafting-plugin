@@ -100,18 +100,23 @@ When the game isn't being read, prices come from [a2-tracker.com](https://a2-tra
 
 You need **Windows 10 or 11** (64-bit), **AION 2**, and **[Flav-Toolkit](https://github.com/Flavbestlol/flav-toolkit)** with [Npcap](https://npcap.com) (Flav-Toolkit's README says how).
 
-1. **Get the add-on.** On this page: **Code › Download ZIP**, and extract it to a folder that can stay, for example `D:\Games\Addons\Market Crafting`.
-2. **Get its runtime.** Double-click `tools\get-node.bat` once. It downloads the official Node.js (one file, from nodejs.org) into `app\node\`.
-3. **Add it to Flav-Toolkit.** In the hub: **+ Add a folder of add-ons**, type `D:\Games\Addons` (the folder *around* the add-on), click **Add**, then **Rescan**. *Dragon Gear Prices* shows in the sidebar: click **Start**.
-4. **Play.** Start AION 2 with **Play AION 2** in Flav-Toolkit (so the Market can be read), log in, and open the panel from the dock by the minimap.
+1. **Install it from the hub.** Open Flav-Toolkit's hub (double-click its tray icon), go to **Get add-ons** and click **Install** on *Dragon Gear Prices*. The hub downloads it from Flav-Toolkit's own signed catalogue, checks it, and starts it; it starts with Flav-Toolkit from then on. Everything it needs comes in the package, Node.js included.
+2. **Play.** Start AION 2 with **Play AION 2** in Flav-Toolkit (so the Market can be read), log in, and open the panel from the dock by the minimap.
 
-> [!NOTE]
-> Signed releases are planned: then the hub installs and updates the add-on in one click, with no runtime to fetch. Until then, updating is the same three steps over your folder (your `settings.json` and `data\` stay).
+**Updates** show on the same page: a gold *Update* on the card, and a mark on the dock. Click it when you like; nothing updates by itself. Your plan, ticks, alerts and what was read from the game (`settings.json`, `data\`) stay through every update, repair and roll back.
+
+<details>
+<summary><b>From this repository instead (to try a change)</b></summary>
+
+1. **Code › Download ZIP** (or clone), and extract it to a folder that can stay, for example `D:\Games\Addons\Market Crafting`.
+2. Double-click `tools\get-node.bat` once: it downloads the official Node.js (one file, from nodejs.org) into `app\node\`.
+3. In the hub: **Core › Add-on folders**, type `D:\Games\Addons` (the folder *around* the add-on), click **Add**, then **Rescan**. A copy installed from Get add-ons runs instead of this one until you switch it on its card.
+</details>
 
 <details>
 <summary><b>Without Flav-Toolkit</b></summary>
 
-Double-click `Dragon Gear Prices.bat`: it starts the app and opens its page in your browser. You get the plan, the shopping list and the steps with a2-tracker's hourly prices, but no overlay, no live Market prices, no bags and no gear from the game (type your character's name and pick its server to read it from the official site).
+In a copy from this repository, double-click `Dragon Gear Prices.bat`: it starts the app and opens its page in your browser. You get the plan, the shopping list and the steps with a2-tracker's hourly prices, but no overlay, no live Market prices, no bags and no gear from the game (type your character's name and pick its server to read it from the official site).
 </details>
 
 ## Is it safe?
@@ -144,13 +149,13 @@ Log in (or go back to character select and in again) with Flav-Toolkit already r
 <details>
 <summary><b>The hub doesn't list the add-on</b></summary>
 
-The folder you add in the hub is the one *around* the add-on (`D:\Games\Addons`), not the add-on's own. Inside it, `Market Crafting\addon.json` must be there. Then **Rescan**.
+Install it from **Get add-ons**. For a copy from this repository: the folder you add in the hub is the one *around* the add-on (`D:\Games\Addons`), not the add-on's own. Inside it, `Market Crafting\addon.json` must be there. Then **Rescan**.
 </details>
 
 <details>
 <summary><b>It says "app\node\node.exe" is missing</b></summary>
 
-Run `tools\get-node.bat` once. If the download fails, get `node.exe` from [nodejs.org](https://nodejs.org/dist/v24.22.1/win-x64/) into `app\node\` yourself.
+A copy from Get add-ons has it: click **Repair** on its card. A copy from this repository: run `tools\get-node.bat` once. If the download fails, get `node.exe` from [nodejs.org](https://nodejs.org/dist/v24.22.1/win-x64/) into `app\node\` yourself.
 </details>
 
 <details>
