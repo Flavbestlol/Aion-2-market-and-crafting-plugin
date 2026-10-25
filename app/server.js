@@ -36,13 +36,15 @@ const logErr = e => { lastError = e.message || String(e); try { if (fs.existsSyn
 
 async function refresh({ force = false, quiet = false } = {}) {
   if (busy) return;
-  busy = { step: 'Starting', done: 0, total: 1 }; lastError = null;
+  // auto: the hourly check started it, not the player (the list says so, so a refresh nobody pressed isn't a mystery)
+  const auto = !!quiet;
+  busy = { step: 'Starting', done: 0, total: 1, auto }; lastError = null;
   try {
-    data = await C.fetchAll(settings, (step, done, total) => { busy = { step, done, total }; }, { force });
+    data = await C.fetchAll(settings, (step, done, total) => { busy = { step, done, total, auto }; }, { force });
     // the worn gear: from the game's login list when it has been seen; the official site only when it hasn't and the
     // game isn't being read now (then the next login brings the list)
     if (!applyGameGear() && settings.auto_sync && settings.character && settings.character.name && !readingGame()) await syncGear(false);
-    busy = { step: 'Calculating', done: 0, total: 1 };
+    busy = { step: 'Calculating', done: 0, total: 1, auto };
     report = C.computeState(data, settings, market);
     lastRefresh = Date.now();
     writeLog();
@@ -112,12 +114,23 @@ function fromCore(ev) {
   if (ev.type === 'inventory') {
     const kind = inventory.take(ev);
     if (kind === 'list' && applyGameGear()) recompute(); // a login: what is worn now
+    if (kind) changedSoon('inventory');
     return kind ? 'inventory' : null;
   }
   if (ev.type === 'my_profile' || ev.type === 'my_server') { const ch = me.take(ev); if (ch) applyMe(); return ch ? 'me' : null; }
   const changed = market.take(ev);
   if (changed === 'summary' || changed === 'stats') { recompute(); alerts.check('exchange'); }
+  if (changed) changedSoon('market');
   return changed;
+}
+/* Tells the open overlay pages that what they show has changed (the bag, or the Exchange as the game showed it), once
+   things settle: a purchase is two events, an Exchange page several. Nothing is downloaded for it; each page redraws
+   from what this app already holds, if the player lets it ("Update by itself"). */
+let changedTimer = null, changedWhat = new Set();
+function changedSoon(what) {
+  changedWhat.add(what);
+  clearTimeout(changedTimer);
+  changedTimer = setTimeout(() => { const w = [...changedWhat].join(','); changedWhat = new Set(); tell('data', w); }, 700);
 }
 /* What is known about an item right now, for the alerts: the Exchange's cheapest listing and count when seen within
    the hour, else a2-tracker's hourly price; "usual" from the game's own 28-day average (the purchase dialog) or

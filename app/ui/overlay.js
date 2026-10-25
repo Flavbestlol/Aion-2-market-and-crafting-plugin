@@ -39,6 +39,14 @@
   // which way the list faces: its title, buttons and grip sit toward the middle of the screen. Auto = the half
   // it sits in (a per-screen preference, kept in this window's storage)
   const faces = () => { try { return localStorage.getItem("faces") || "auto"; } catch { return "auto"; } };
+  // Size: the whole list larger or smaller (text, pictures, buttons), kept in this window's storage. The window grows
+  // and shrinks with it: its width by the same ratio, its height by what the content then needs.
+  const SIZES = [[0.9, "90%"], [1, "100%"], [1.15, "115%"], [1.3, "130%"], [1.5, "150%"]];
+  const sizeNow = () => { try { const v = Number(localStorage.getItem("size")); return SIZES.some(([z]) => z === v) ? v : 1; } catch { return 1; } };
+  let Z = sizeNow();
+  document.documentElement.style.zoom = String(Z);
+  // Update by itself: redraw when the bag changes or the game shows Exchange prices (nothing is downloaded for it)
+  const autoOn = () => { try { return localStorage.getItem("auto") !== "0"; } catch { return true; } };
   let sideSeen = "right"; // the half of the screen the window is in
   const applySide = () => {
     const side = faces() === "auto" ? sideSeen : faces();
@@ -125,6 +133,20 @@
       message(String(e));
     }
   }
+  // A redraw nobody pressed: waits while the player types, drags the chips or has ⚙ open, and keeps the list where
+  // it was scrolled. Several changes in a row make one redraw.
+  let quietT = null;
+  function quietLoad() {
+    clearTimeout(quietT);
+    quietT = setTimeout(async () => {
+      if (!G || G.busy) return; // a download under way reloads at its end anyway
+      if (typing || drag || settingsOpen) { quietLoad(); return; }
+      const top = $("list").scrollTop;
+      try { [G, L] = await Promise.all([get("/api/gear"), get("/api/shopping").catch(() => L)]); } catch { return; }
+      render();
+      $("list").scrollTop = top;
+    }, 400);
+  }
   async function change(c) {
     try {
       const r = await post("/api/shop", c);
@@ -158,7 +180,7 @@
     // who: the official site's read of the character when there is one, else what the game said at login
     const c = G.character || G.me;
     const planned = G.class_mode === "manual" && G.class && c && G.class !== c.className ? ` · gear for a ${G.class}` : "";
-    $("sub").replaceChildren(...(c ? [b(c.name), h("span", { text: ` · ${c.className || "class unknown"}${c.gearScore != null ? ` · GS ${fmt(c.gearScore)}` : ""}${planned} · ` })] : []), h("span", { text: G.busy ? `${G.busy.step}…` : `prices ${ago(G.at)}` }));
+    $("sub").replaceChildren(...(c ? [b(c.name), h("span", { text: ` · ${c.className || "class unknown"}${c.gearScore != null ? ` · GS ${fmt(c.gearScore)}` : ""}${planned} · ` })] : []), h("span", { text: G.busy ? `${G.busy.auto ? "Hourly update · " : ""}${G.busy.step}…` : `prices ${ago(G.at)}` }));
     $("reload").classList.toggle("spin", !!G.busy);
     const i = ["gear", "buy", "steps", "alerts"].indexOf(view);
     $("tabs").style.setProperty("--i", i);
@@ -660,6 +682,10 @@
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Faces" }), h("small", { text: "Which way the title, buttons and grip sit. Auto: toward the middle of the screen, from where the list is" })),
         h("div", { class: "seg" }, ...[["auto", "Auto"], ["left", "Left"], ["right", "Right"]].map(([v, t]) =>
           h("button", { type: "button", class: faces() === v ? "on" : "", text: t, onclick: () => { try { localStorage.setItem("faces", v); } catch { /* fine */ } applySide(); render(); } })))),
+      h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Size" }), h("small", { text: "Everything in this list larger or smaller; the window follows" })),
+        h("div", { class: "seg" }, ...SIZES.map(([z, t]) => h("button", { type: "button", class: Z === z ? "on" : "", text: t, onclick: () => setSize(z) })))),
+      h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Update by itself" }), h("small", { text: "Redraw when your bag changes or the game shows you Exchange prices. Nothing is downloaded, nothing is asked of the game" })),
+        sw(autoOn(), () => { try { localStorage.setItem("auto", autoOn() ? "0" : "1"); } catch { /* fine */ } render(); if (autoOn()) quietLoad(); })),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Keys" }), h("small", { text: "Refresh prices, and show or hide this list: pick them in Flav-Toolkit's hub (Dragon Gear Prices › Settings › Keys in the game)" }))),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Read my gear" }), h("small", { text: "When the game isn't being read: from the official site on every price refresh (the game's own read at login always counts)" })), sw(G?.auto_sync !== false, () => change({ auto_sync: G?.auto_sync === false }))),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Count what I own" }), h("small", { text: "Take the bag, storage and warehouse off what to buy and craft. Off: full counts, what you have shown beside them" })),
@@ -670,7 +696,7 @@
         h("input", { type: "range", min: "0", max: "100", step: "5", value: String(Math.round(panelLevel() * 100)), oninput: (e) => setPanel(Number(e.target.value) / 100) })),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Untick everything" }), h("small", { text: "Start the list over" })), h("button", { type: "button", class: "sbtn", text: "Untick", onclick: () => change({ clear: true }) })),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Full app" }), h("small", { text: "Kina and Quna you have, alerts, crafting level: in the browser (typing isn't possible over the game)" })), h("button", { type: "button", class: "sbtn", text: "Open", onclick: () => post("/api/open").catch(() => toast("Couldn't open the browser")) })),
-      h("div", { class: "snote", text: "Prices only refresh when you press ↻ (they're about 5 minutes behind the game anyway)." }),
+      h("div", { class: "snote", text: "↻ downloads the hourly prices again. What the game shows you on the Exchange, and your bag, come in by themselves. With alerts on, the app also checks every hour (\"Hourly update\")." }),
     ];
   }
 
@@ -724,8 +750,10 @@
       h("div", { class: "hint", text: t.tier === s.worn ? `You wear this tier. ${click}` : click }));
     for (const x of bar.parentElement.children) x.classList.toggle("hl", x === bar || [...bar.parentElement.children].indexOf(x) < [...bar.parentElement.children].indexOf(bar));
     tip.hidden = false;
-    const r = bar.getBoundingClientRect(), w = 220, hgt = tip.offsetHeight;
-    tip.style.left = `${Math.min(window.innerWidth - w - 6, Math.max(6, r.left + r.width / 2 - w / 2))}px`;
+    // rectangles are in the window's pixels, the tip's place in the page's (they differ by the Size)
+    const rr = bar.getBoundingClientRect(), r = { left: rr.left / Z, width: rr.width / Z, top: rr.top / Z, bottom: rr.bottom / Z };
+    const w = 220, hgt = tip.offsetHeight;
+    tip.style.left = `${Math.min(window.innerWidth / Z - w - 6, Math.max(6, r.left + r.width / 2 - w / 2))}px`;
     tip.style.top = `${r.top - hgt - 8 < 4 ? r.bottom + 8 : r.top - hgt - 8}px`;
   }
   function hideTip() { $("tip").hidden = true; for (const x of document.querySelectorAll(".bars i.hl")) x.classList.remove("hl"); }
@@ -796,7 +824,7 @@
   let heightNow = null, easing = null, fitQueued = false;
   const needed = () => {
     document.body.classList.add("measure");
-    const h = $("app").offsetHeight + 2;
+    const h = ($("app").offsetHeight + 2) * Z; // the page's pixels, times the Size: the window's
     document.body.classList.remove("measure");
     return Math.max(60, Math.ceil(h));
   };
@@ -818,6 +846,18 @@
     easing = requestAnimationFrame(tick);
   };
   const scheduleFit = () => { if (!fitQueued) { fitQueued = true; requestAnimationFrame(fit); } };
+  // A new Size: the page scales, the window takes the same ratio in width, then the height the content needs.
+  function setSize(z) {
+    if (z === Z) return;
+    const was = Z;
+    Z = z;
+    try { localStorage.setItem("size", String(z)); } catch { /* fine */ }
+    document.documentElement.style.zoom = String(z);
+    const o = ov();
+    if (o) o.fit(heightNow || window.innerHeight, Math.round(window.innerWidth * z / was)).catch(() => {});
+    render();
+    scheduleFit();
+  }
   $("mini").addEventListener("mousedown", moveWindow);
   $("unfold").addEventListener("click", () => $("fold").click());
   $("munlock").addEventListener("click", () => $("unlock").click());
@@ -853,6 +893,8 @@
     const es = new EventSource("/api/events");
     // the app finished downloading prices (or reading the gear): load now, so ↻ stops when it is done
     es.addEventListener("state", () => { if (G?.busy || !G) load(); });
+    // the bag changed, or the game showed Exchange prices: redraw from what the app holds (no spinner, the scroll kept)
+    es.addEventListener("data", () => { if (autoOn()) quietLoad(); });
     es.addEventListener("hotkey", (e) => { if (e.data === "refresh" && !typing) { toast("Refreshing prices…"); refresh(); } });
     es.addEventListener("sent", () => {
       if (!folded) { view = "buy"; localStorage.setItem("shop-view", view); }

@@ -35,6 +35,8 @@
 
 Dragon Gear Prices is an add-on for [Flav-Toolkit](https://github.com/Flavbestlol/flav-toolkit). Four tabs in one small panel that sits over AION 2: **Gear**, **Buy**, **Steps** and **Alerts**. Drag it anywhere; clicks beside it go to the game.
 
+It keeps itself up to date: when you buy, craft or move something, or open an item on the Market in game, the panel redraws by itself (⚙ › *Update by itself*; nothing is downloaded and nothing is asked of the game). ⚙ › *Size* makes everything in it larger, from 90 % to 150 %.
+
 ### Your gear, read from the game
 
 <p align="center">
