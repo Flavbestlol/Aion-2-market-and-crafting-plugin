@@ -1,8 +1,9 @@
 Dragon Gear Prices  (Market Crafting add-on, by Flavbest)
 =========================================================
 
-Dragon Gear Prices.bat   Double-click: (re)starts the app and opens it in your browser
-                         (http://127.0.0.1:7317 - bookmark it; it only works on this PC).
+Install and update it from Flav-Toolkit's hub: Get add-ons > Dragon Gear Prices. The hub starts it; its page is
+http://127.0.0.1:7317 (the hub's Open; bookmark it, it only works on this PC). A copy from the repository starts
+with Dragon Gear Prices.bat instead (double-click: (re)starts the app and opens the page).
 
 In the page:
   - Your character: with Flav-Toolkit running, logging in to the game tells the app who you are
