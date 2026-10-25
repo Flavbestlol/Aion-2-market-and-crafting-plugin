@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.15.1" src="https://img.shields.io/badge/version-0.15.1-f2c35b?style=for-the-badge">
+  <img alt="Version 0.15.2" src="https://img.shields.io/badge/version-0.15.2-f2c35b?style=for-the-badge">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-1f6fd6?style=for-the-badge">
   <a href="https://github.com/Flavbestlol/flav-toolkit"><img alt="A Flav-Toolkit add-on" src="https://img.shields.io/badge/a%20Flav--Toolkit-add--on-ff8540?style=for-the-badge"></a>
   <img alt="Vibe coded" src="https://img.shields.io/badge/vibe-coded-6fe3a1?style=for-the-badge">

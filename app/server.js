@@ -409,4 +409,7 @@ server.listen(PORT, HOST, () => {
   refresh();
   // v1 used a separate hourly task; the app replaces it.
   ps('Unregister-ScheduledTask -TaskName ' + psq(OLD_TASK) + ' -Confirm:$false -ErrorAction SilentlyContinue');
+  // With alerts on, the logon task must start this copy: a copy installed from the hub's Get add-ons lives in another
+  // folder than one run from a repository, and a task still naming the old one would hold the port at the next login.
+  if (settings.alerts) setAutostart(true);
 });
