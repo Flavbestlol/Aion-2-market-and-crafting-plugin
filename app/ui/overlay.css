@@ -17,6 +17,7 @@
   --num: "Bahnschrift", "Bahnschrift SemiCondensed", "DIN Alternate", "Segoe UI", system-ui, sans-serif;
   --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --halo: 0 0 2px #000, 0 1px 2px #000, 0 0 6px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 0, 0, 0.6);
+  --halo-card: 0 1px 1px rgba(0, 0, 0, 0.6);
   /* how solid the panels are: 1 = solid, 0 = glass, the ⚙ slider sets it. Below 1 the sheets fade toward the
      middle of the screen the way the game's own HUD does; at 1 nothing shows through. */
   --panel: 1;
@@ -334,7 +335,9 @@ body.measure .list { overflow: visible; }
    everything" and "shrink to the dock"; the header, tabs, summary and chips are gone. The window follows the card
    (fit() in overlay.js). */
 body.folded .top, body.folded .tabs, body.folded .sum, body.folded .src, body.folded .chipbar, body.folded .prog { display: none; }
-body.folded #app { background: var(--strip); border-radius: var(--r); box-shadow: 0 10px 30px rgba(0, 0, 0, calc(0.35 * var(--panel))); backdrop-filter: blur(calc(8px * var(--panel))); border: 1px solid rgba(242, 195, 91, 0.14); border-top-color: rgba(242, 195, 91, 0.26); text-shadow: var(--halo); }
+body.folded #app { background: var(--strip); border-radius: var(--r); box-shadow: 0 10px 30px rgba(0, 0, 0, calc(0.35 * var(--panel))); backdrop-filter: blur(calc(8px * var(--panel))); border: 1px solid rgba(242, 195, 91, 0.14); border-top-color: rgba(242, 195, 91, 0.26); text-shadow: var(--halo-card); }
+/* the compact card sits on its own dark sheet: a light shadow is enough; the full halo only when the panel goes clear */
+body.folded.clear #app { text-shadow: var(--halo-clear); }
 body.folded .pane { background: none; box-shadow: none; backdrop-filter: none; border: 0; margin-top: 0; }
 body.folded .list { padding: 0 8px 8px; }
 body.folded .onehead { margin: 0 2px 4px; }
