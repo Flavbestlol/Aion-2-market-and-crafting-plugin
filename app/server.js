@@ -24,6 +24,8 @@ const market = new Market(path.join(C.DATA, 'market.json')); // the Exchange as 
 const inventory = new Inventory(path.join(C.DATA, 'inventory.json')); // the bag, storage and warehouse, from Flav-Toolkit
 const me = new Me(path.join(C.DATA, 'me.json')); // who is playing (name, server, class), from Flav-Toolkit
 const VERSION = (() => { try { return String(JSON.parse(fs.readFileSync(path.join(C.ROOT, 'addon.json'), 'utf8')).version || '0'); } catch { return '0'; } })();
+let gearRead = null; // the official site's gear read while it runs (its own state: it never holds or restores a refresh's)
+const busyNow = () => busy || gearRead; // what the pages are told: a refresh or a gear read under way
 let data = null, report = null, busy = null, lastError = null, lastRefresh = 0, syncError = null, overlaySeq = 0; // overlaySeq: bumped by "Show in overlay"
 
 /* Money in the chosen currency: "$1,234", "€1,234", "1,234 SAR". */
@@ -48,14 +50,17 @@ async function refresh({ force = false, quiet = false } = {}) {
     if (quiet || settings.alerts) await checkAlerts(quiet);
   } catch (e) { logErr(e); }
   busy = null;
+  tell('state', 'idle'); // the overlay reloads at once (it no longer waits on its own timer to see the end)
 }
 async function syncGear(fresh) {
-  const prev = busy; busy = { step: 'Reading your gear', done: 0, total: 1 };
+  if (gearRead) return;
+  gearRead = { step: 'Reading your gear', done: 0, total: 1 };
   try {
     const r = await Armory.lookup(settings.character.name, settings.character.serverId, { fresh });
     C.applySync(data, settings, r); syncError = null; C.saveSettings(settings);
   } catch (e) { syncError = e.message; }
-  busy = prev;
+  gearRead = null;
+  if (!busy) tell('state', 'idle');
 }
 /* The worn gear as the game's last login list said it, in applySync's shape, or null. */
 function gameGear() {
@@ -96,7 +101,7 @@ function applyMe() {
     C.saveSettings(settings);
     try {
       if (moved) await refresh({});
-      else if (who && data && !busy && !applyGameGear() && settings.auto_sync && !readingGame()) await syncGear(true);
+      else if (who && data && !busyNow() && !applyGameGear() && settings.auto_sync && !readingGame()) await syncGear(true);
     } catch (e) { logErr(e); }
   }, 1000);
 }
@@ -142,15 +147,17 @@ const feed = new Feed({ version: VERSION, onEvent: fromCore, onShow: show => fro
    The core keeps its window; this app says when to show or hide it (over the feed) and tells the page what happens
    (a key pressed, "Show in overlay" from the browser page) on one local event stream, /api/events. */
 const LIST = 'list'; // the overlay's id in addon.json
-let listShown = true; // what this app last asked or was told (the core shows an overlay unless the player hid it)
+// The list is on screen while its page listens here: the core closes the window when the player hides it (the dock's
+// icon, the hub's switch, its own button), so the open pages are the truth for a show-or-hide key.
+const listOpen = () => pages.size > 0;
 const pages = new Set(); // the overlay pages listening on /api/events
 const tell = (name, value) => { for (const res of pages) { try { res.write('event: ' + name + '\ndata: ' + String(value) + '\n\n'); } catch { /* gone */ } } };
-function showList(on) { listShown = !!on; feed.overlay(LIST, listShown); }
+function showList(on) { feed.overlay(LIST, !!on); }
 // the hub's Open shows the list; its Settings › Its own settings opens the full page in the browser
 function fromHub(what) { if (what === 'open') showList(true); else if (what === 'settings') openPage(); }
 // Dragon Gear's keys in the game (addon.json `hotkeys`; the player picks them in the hub, the core holds them)
 function pressed(id) {
-  if (id === 'toggle') return showList(!listShown);
+  if (id === 'toggle') return showList(!listOpen());
   if (id === 'refresh') { if (pages.size) tell('hotkey', 'refresh'); else if (!busy) refresh({}); }
 }
 // this app's own page in the player's browser (the address is fixed: nothing from a request goes into the command)
@@ -179,7 +186,7 @@ function searchItems(q) {
 /* Everything the in-game overlay's Gear tab shows, small: one row per slot with its tiers' costs and verdict. */
 function gearNow() {
   const m = FX.money(settings, C.DATA);
-  const out = { at: report ? report.generatedAt : null, busy, error: lastError, syncError, show: overlaySeq, cur: curOf(m), auto_sync: !!settings.auto_sync, class: settings.class, class_mode: settings.class_mode === 'manual' ? 'manual' : 'auto', me: me.known() ? { name: me.name, className: me.class || me.gameClass, level: me.level } : null, synced: !!(settings.sync && settings.sync.detected), character: settings.sync && settings.sync.profile ? { name: settings.sync.profile.name, className: settings.sync.profile.className, gearScore: settings.sync.profile.gearScore } : null, slots: [], total: { money: 0, kina: 0, n: 0 } };
+  const out = { at: report ? report.generatedAt : null, busy: busyNow(), error: lastError, syncError, show: overlaySeq, cur: curOf(m), auto_sync: !!settings.auto_sync, class: settings.class, class_mode: settings.class_mode === 'manual' ? 'manual' : 'auto', me: me.known() ? { name: me.name, className: me.class || me.gameClass, level: me.level } : null, synced: !!(settings.sync && settings.sync.detected), character: settings.sync && settings.sync.profile ? { name: settings.sync.profile.name, className: settings.sync.profile.className, gearScore: settings.sync.profile.gearScore } : null, slots: [], total: { money: 0, kina: 0, n: 0 } };
   if (!report) return out;
   const perKina = report.rate.qunaPer10m / 1e7 * m.pack / m.quna;
   for (const s of Slots.slotsFor(settings.class)) {
@@ -326,7 +333,7 @@ function send(res, code, body, type = 'application/json; charset=utf-8', extra =
 function readBody(req) {
   return new Promise((ok, bad) => { let b = ''; req.on('data', c => { b += c; if (b.length > 1e6) { bad(new Error('too big')); req.destroy(); } }); req.on('end', () => { try { ok(b ? JSON.parse(b) : {}); } catch (e) { bad(e); } }); });
 }
-const status = () => ({ busy, error: lastError, syncError, lastRefresh, hasReport: !!report, alerts: !!settings.alerts, market: market.status(), inventory: inventory.status(), me: me.status(), feed: feed.info(), version: VERSION });
+const status = () => ({ busy: busyNow(), error: lastError, syncError, lastRefresh, hasReport: !!report, alerts: !!settings.alerts, market: market.status(), inventory: inventory.status(), me: me.status(), feed: feed.info(), version: VERSION });
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -403,7 +410,7 @@ const server = http.createServer(async (req, res) => {
         if (body.gear) return send(res, 200, gearNow());
         return data ? send(res, 200, { ...shoppingNow(), alertError }) : send(res, 409, { error: 'no data yet' });
       }
-      if (p === '/api/overlay') { if (typeof body.shown === 'boolean') listShown = body.shown; return send(res, 200, { shown: listShown }); }
+      if (p === '/api/overlay') return send(res, 200, { shown: listOpen() });
       if (p === '/api/unlock') return send(res, 200, { ok: feed.unlock() });
       if (p === '/api/open') return send(res, 200, { ok: openPage() });
       if (p === '/api/quit') { send(res, 200, { ok: true }); setTimeout(() => process.exit(0), 200); return; }

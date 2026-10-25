@@ -41,7 +41,7 @@ class Feed {
     this.granted = []; this.locked = false;
     this.sock = null; this.beatTimer = null; this.holdUntil = 0;
     this.state = 'waiting';   // waiting | connecting | connected | refused: … | disconnected
-    this.core = null; this.source = null; this.game = false; this.capturing = false; this.text = null;
+    this.core = null; this.source = null; this.game = false; this.capturing = false; this.text = null; this.exchange = null;
     this.events = 0; this.connectedAt = 0; this.note = '';
     this.notes = new Map();   // title -> note, re-raised after a reconnect
     this.timer = setInterval(() => this.tick(), LOOK_MS);
@@ -118,6 +118,8 @@ class Feed {
   status(s) {
     if (!s || typeof s !== 'object') return;
     this.source = s.source || null; this.game = !!s.game; this.capturing = !!s.capturing; this.text = s.text || null;
+    // whether the core reads the Exchange (core 0.12.0): off | ready | live; null from an older core
+    this.exchange = ['off', 'ready', 'live'].includes(s.exchange) ? s.exchange : null;
     if (this.onStatus) { try { this.onStatus(s); } catch { /* fine */ } }
   }
 
@@ -132,7 +134,7 @@ class Feed {
     clearInterval(this.beatTimer); this.beatTimer = null;
     this.sock = null;
     if (!this.state.startsWith('refused')) this.state = 'disconnected';
-    this.core = null; this.game = false; this.capturing = false; this.source = null;
+    this.core = null; this.game = false; this.capturing = false; this.source = null; this.exchange = null;
   }
 
   /* A note for the player: the hub lists it, the dock lights the icon up with the picture. `icon` is this app's own
@@ -153,7 +155,7 @@ class Feed {
   unlock() { return this.granted.includes('lock') ? this.send({ op: 'lock', locked: false }) : false; }
 
   info() {
-    return { state: this.state, core: this.core, features: this.granted, locked: this.locked, source: this.source, game: this.game, capturing: this.capturing, text: this.text, events: this.events, since: this.connectedAt ? new Date(this.connectedAt).toISOString() : null, file: feedFile() };
+    return { state: this.state, core: this.core, features: this.granted, locked: this.locked, exchange: this.exchange, source: this.source, game: this.game, capturing: this.capturing, text: this.text, events: this.events, since: this.connectedAt ? new Date(this.connectedAt).toISOString() : null, file: feedFile() };
   }
 
   close() { clearInterval(this.timer); clearInterval(this.beatTimer); try { this.sock && this.sock.close(); } catch { /* fine */ } this.sock = null; }

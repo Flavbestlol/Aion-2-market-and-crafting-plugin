@@ -76,3 +76,21 @@ test('the overlay page talks only to this app and the core\'s bridge', () => {
   assert.match(server, /CSP_OVERLAY = CSP\.replace\("connect-src 'self'", "connect-src 'self' ipc: http:\/\/ipc\.localhost"\)/);
   assert.match(server, /connect-src 'self';/);
 });
+
+test('the core says whether it reads the Exchange (0.12.0), and an older core says nothing', () => {
+  const { f } = feed();
+  f.take(JSON.stringify({ op: 'status', capturing: true, game: true, source: 'live', text: 'x', exchange: 'ready' }));
+  assert.strictEqual(f.info().exchange, 'ready');
+  f.take(JSON.stringify({ op: 'status', capturing: true, game: true, source: 'live', text: 'x', exchange: 'sideways' }));
+  assert.strictEqual(f.info().exchange, null);
+  f.take(JSON.stringify({ op: 'status', capturing: true, game: true, source: 'live', text: 'x' }));
+  assert.strictEqual(f.info().exchange, null);
+  f.close();
+});
+
+test('a gear read never puts back a refresh that has ended (the spinning refresh button)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.doesNotMatch(src, /busy = prev/);
+  assert.match(src, /gearRead = null;/);
+  assert.match(src, /tell\('state', 'idle'\)/);
+});

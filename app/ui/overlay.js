@@ -142,6 +142,10 @@
       ? [h("span", { text: "Reading prices…" })]
       : [h("span", { text: "Dragon Gear Prices isn't answering. Start it again from Flav-Toolkit's hub." })];
     $("list").replaceChildren(h("div", { class: "msg" }, ...text));
+    // nothing is downloading as far as this page knows: no spinning ↻; ask again in a moment (the app may be starting)
+    $("reload").classList.remove("spin");
+    clearTimeout(message.retry);
+    message.retry = setTimeout(() => { if (!G) load(); }, 3000);
     scheduleFit();
   }
 
@@ -415,8 +419,12 @@
   function priceWarning() {
     const m = L && L.market, f = L && L.feed;
     if (m && m.live) return m.ageMin != null && m.ageMin > 30 ? h("div", { class: "pwarn soft" }, h("b", { text: "Exchange seen " + m.ageMin + " min ago" }), h("span", { text: " · open the Exchange in game to refresh before you buy" })) : null;
+    const soft = (bold, rest) => h("div", { class: "pwarn soft" }, h("b", { text: bold }), h("span", { text: rest }));
     let what, todo;
     if (!f || f.state !== "connected") { what = "Flav-Toolkit isn't running"; todo = "Start it, then Play AION 2 from its tray to read the Exchange's own prices."; }
+    // Flav-Toolkit 0.12.0 says whether it reads the Exchange: started with Play AION 2 and nothing seen yet is not a fault
+    else if (f.exchange === "ready" || f.exchange === "live") return soft("Open the Exchange in game", " to read its own prices · hourly prices meanwhile");
+    else if (f.exchange === "off") { what = "The Exchange can't be read"; todo = "AION 2 wasn't started through Flav-Toolkit: quit the game and start it with Play AION 2 in the tray, then open the Exchange."; }
     else if (f.game) { what = "The Exchange can't be read"; todo = "AION 2 wasn't started through Flav-Toolkit: quit the game and start it with Play AION 2 in the tray, then open the Exchange."; }
     else { what = "Prices are a2-tracker's hourly ones"; todo = "Start AION 2 with Play AION 2 in Flav-Toolkit's tray and open the Exchange for its own prices before you buy."; }
     return h("div", { class: "pwarn" }, h("div", { class: "pw1" }, h("span", { class: "ico", text: "!" }), b(what)), h("div", { class: "pw2", text: todo }));
@@ -798,12 +806,14 @@
 
   // No refreshing on a timer: the list changes only when you press ↻, tick or pick something
   // (it loads once at start, and again if the app wasn't running then).
-  const shown = (on) => { if (!on && typing) { typing = false; typingTo(false); } if (on) { detectSide(); (G ? Promise.resolve() : load()).then(scheduleFit); } };
+  const shown = (on) => { if (!on && typing) { typing = false; typingTo(false); } if (on) { detectSide(); (G && !G.busy ? Promise.resolve() : load()).then(scheduleFit); } };
   // What the app tells this page as it happens: one of Dragon Gear's keys pressed in the game, or "Show in overlay"
   // pressed in its browser page (open on the piece sent, on its shopping list).
   const events = () => {
     if (typeof EventSource !== "function") return;
     const es = new EventSource("/api/events");
+    // the app finished downloading prices (or reading the gear): load now, so ↻ stops when it is done
+    es.addEventListener("state", () => { if (G?.busy || !G) load(); });
     es.addEventListener("hotkey", (e) => { if (e.data === "refresh" && !typing) { toast("Refreshing prices…"); refresh(); } });
     es.addEventListener("sent", () => {
       if (!folded) { view = "buy"; localStorage.setItem("shop-view", view); }
