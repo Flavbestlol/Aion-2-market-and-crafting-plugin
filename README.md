@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.15.0" src="https://img.shields.io/badge/version-0.15.0-f2c35b?style=for-the-badge">
+  <img alt="Version 0.15.1" src="https://img.shields.io/badge/version-0.15.1-f2c35b?style=for-the-badge">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-1f6fd6?style=for-the-badge">
   <a href="https://github.com/Flavbestlol/flav-toolkit"><img alt="A Flav-Toolkit add-on" src="https://img.shields.io/badge/a%20Flav--Toolkit-add--on-ff8540?style=for-the-badge"></a>
   <img alt="Vibe coded" src="https://img.shields.io/badge/vibe-coded-6fe3a1?style=for-the-badge">
@@ -165,7 +165,7 @@ Run `tools\get-node.bat` once. If the download fails, get `node.exe` from [nodej
 - **[eiruuru/aion2-char-sheet](https://github.com/eiruuru/aion2-char-sheet)** (GPL-3.0): the server list.
 - **[Exchange Rate API](https://www.exchangerate-api.com)**: today's rates, with no account.
 - **[Node.js](https://nodejs.org)**: the runtime the app runs on.
-- The banner art and the icon were made for this project with [Higgsfield](https://higgsfield.ai). The README's GIFs are drawn from the add-on's own UI with made-up data (see [`tools/readme-gifs`](tools/readme-gifs)).
+- The banner art and the emblem were made for this project with [Higgsfield](https://higgsfield.ai). The README's GIFs are drawn from the add-on's own UI with made-up data (see [`tools/readme-gifs`](tools/readme-gifs)).
 
 AION 2 is a trademark of NCSOFT. This project isn't affiliated with NCSOFT.
 
