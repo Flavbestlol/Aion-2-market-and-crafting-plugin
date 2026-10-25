@@ -136,7 +136,29 @@ const alerts = new Alerts({
   fire: f => { toast(f.title, f.text); feed.notify(f.title, f.text, f.icon ? 'http://' + HOST + ':' + PORT + f.icon : null, 'alert'); },
 });
 /* The core's feed: this app reads it itself (feed.js). The tray's posts still arrive too for now; both land in fromCore. */
-const feed = new Feed({ version: VERSION, onEvent: fromCore, onStatus: () => { feed.note = report ? 'prices ' + Math.round((Date.now() - lastRefresh) / 60000) + ' min old' : 'loading prices'; } });
+const feed = new Feed({ version: VERSION, onEvent: fromCore, onShow: show => fromHub(show), onHotkey: id => pressed(id), onStatus: () => { feed.note = report ? 'prices ' + Math.round((Date.now() - lastRefresh) / 60000) + ' min old' : 'loading prices'; } });
+
+/* The shopping list over the game: overlay.html, served here and shown by Flav-Toolkit (`overlays` in addon.json).
+   The core keeps its window; this app says when to show or hide it (over the feed) and tells the page what happens
+   (a key pressed, "Show in overlay" from the browser page) on one local event stream, /api/events. */
+const LIST = 'list'; // the overlay's id in addon.json
+let listShown = true; // what this app last asked or was told (the core shows an overlay unless the player hid it)
+const pages = new Set(); // the overlay pages listening on /api/events
+const tell = (name, value) => { for (const res of pages) { try { res.write('event: ' + name + '\ndata: ' + String(value) + '\n\n'); } catch { /* gone */ } } };
+function showList(on) { listShown = !!on; feed.overlay(LIST, listShown); }
+// the hub's Open shows the list; its Settings › Its own settings opens the full page in the browser
+function fromHub(what) { if (what === 'open') showList(true); else if (what === 'settings') openPage(); }
+// Dragon Gear's keys in the game (addon.json `hotkeys`; the player picks them in the hub, the core holds them)
+function pressed(id) {
+  if (id === 'toggle') return showList(!listShown);
+  if (id === 'refresh') { if (pages.size) tell('hotkey', 'refresh'); else if (!busy) refresh({}); }
+}
+// this app's own page in the player's browser (the address is fixed: nothing from a request goes into the command)
+function openPage() {
+  if (process.platform !== 'win32') return false;
+  ps('Start-Process ' + psq('http://' + HOST + ':' + PORT + '/'));
+  return true;
+}
 
 /* Items by name, for the alerts' search box: up to 20, with the icon and what is known now. */
 function searchItems(q) {
@@ -295,6 +317,8 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 /* What the pages may load and talk to: this app, and pictures from the official AION 2 CDN and portrait host. No frames
    around the pages (another site cannot embed them), no plugins, no forms. */
 const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://assets.playnccdn.com https://profileimg.plaync.com https://fizz-download.playnccdn.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'";
+/* The overlay page also talks to Flav-Toolkit's window through its bridge (Tauri's IPC, on its own local scheme). */
+const CSP_OVERLAY = CSP.replace("connect-src 'self'", "connect-src 'self' ipc: http://ipc.localhost");
 function send(res, code, body, type = 'application/json; charset=utf-8', extra = {}) {
   res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': CSP, ...extra });
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
@@ -355,7 +379,7 @@ const server = http.createServer(async (req, res) => {
         if (Array.isArray(body.sel)) sh.sel = body.sel.map(String).slice(0, 20);
         if (typeof body.tick === 'string' && body.tick.length < 200) C.tickStep(sh.ticks, body.tick, data ? C.stepKeys(C.shopping(data, settings, market, inventory)) : []);
         if (body.clear) sh.ticks = {};
-        if (body.show) overlaySeq++;
+        if (body.show) { overlaySeq++; showList(true); tell('sent', overlaySeq); }
         if (body.plan && typeof body.plan.slot === 'string' && Number.isInteger(body.plan.have) && body.plan.have >= 0 && body.plan.have <= 6) {
           const cur = Slots.rangeOf(settings.plan, body.plan.slot);
           settings.plan[body.plan.slot] = { have: body.plan.have, goal: Math.max(cur.goal, Math.min(6, body.plan.have + 1)), skip: false };
@@ -379,6 +403,9 @@ const server = http.createServer(async (req, res) => {
         if (body.gear) return send(res, 200, gearNow());
         return data ? send(res, 200, { ...shoppingNow(), alertError }) : send(res, 409, { error: 'no data yet' });
       }
+      if (p === '/api/overlay') { if (typeof body.shown === 'boolean') listShown = body.shown; return send(res, 200, { shown: listShown }); }
+      if (p === '/api/unlock') return send(res, 200, { ok: feed.unlock() });
+      if (p === '/api/open') return send(res, 200, { ok: openPage() });
       if (p === '/api/quit') { send(res, 200, { ok: true }); setTimeout(() => process.exit(0), 200); return; }
       return send(res, 404, { error: 'not found' });
     }
@@ -388,6 +415,16 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/shopping') return data ? send(res, 200, shoppingNow()) : send(res, 409, { error: 'no data yet' });
     if (p === '/api/gear') return send(res, 200, gearNow());
     if (p === '/api/overlay-seq') return send(res, 200, { show: overlaySeq });
+    if (p === '/api/events') {
+      // what the overlay page hears as it happens; a few pages at most, a comment every 25 s keeps it open
+      if (pages.size >= 8) return send(res, 429, { error: 'too many' });
+      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': CSP });
+      res.write(': hello\n\n');
+      pages.add(res);
+      const keep = setInterval(() => { try { res.write(': still here\n\n'); } catch { /* gone */ } }, 25000);
+      req.on('close', () => { clearInterval(keep); pages.delete(res); });
+      return;
+    }
     if (p === '/api/alerts') return send(res, 200, { alerts: alerts.list(), recent: alerts.recent, kinds: Object.fromEntries(Object.entries(require('./alerts').KINDS).map(([k, v]) => [k, { words: v.words, unit: v.unit }])) });
     if (p === '/api/items') return send(res, 200, { items: searchItems(url.searchParams.get('q')) });
     if (p.startsWith('/icon/')) {
@@ -401,7 +438,7 @@ const server = http.createServer(async (req, res) => {
     if (rel === 'app/signal.js' || rel === 'app/slots.js') return send(res, 200, fs.readFileSync(path.join(__dirname, path.basename(rel))), TYPES['.js']);
     const file = path.resolve(UI, rel);
     if (!file.startsWith(UI + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return send(res, 404, 'not found', 'text/plain');
-    return send(res, 200, fs.readFileSync(file), TYPES[path.extname(file)] || 'application/octet-stream', rel.startsWith('art/') ? { 'Cache-Control': 'max-age=86400' } : {});
+    return send(res, 200, fs.readFileSync(file), TYPES[path.extname(file)] || 'application/octet-stream', rel.startsWith('art/') ? { 'Cache-Control': 'max-age=86400' } : rel === 'overlay.html' ? { 'Content-Security-Policy': CSP_OVERLAY } : {});
   } catch (e) { logErr(e); send(res, 500, { error: e.message }); }
 });
 server.on('error', e => { if (e.code === 'EADDRINUSE') process.exit(0); logErr(e); process.exit(1); }); // already running: the launcher just opens the page

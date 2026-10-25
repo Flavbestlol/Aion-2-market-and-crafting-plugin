@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dragon Gear · shopping list</title>
+<link rel="stylesheet" href="overlay.css">
+<script src="overlay.js" defer></script>
+</head>
+<body class="hud side-right">
+<main id="app">
+  <header class="top" id="top">
+    <div class="ttl">
+      <div class="t1"><span class="mark" aria-hidden="true"></span>Dragon Gear</div>
+      <div class="t2" id="sub"></div>
+    </div>
+    <button type="button" class="ic lockbtn" id="unlock" title="Locked: clicks go to the game. Click to unlock every overlay"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></button>
+    <button type="button" class="ic" id="set" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <button type="button" class="ic" id="reload" title="Refresh prices (only when you press it)"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+    <button type="button" class="ic" id="fold" title="Compact: one step at a time, nothing else"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+    <button type="button" class="ic" id="close" title="Hide (the dock's Dragon Gear icon or its key brings it back)"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+  </header>
+  <nav class="tabs" id="tabs" style="--i:0">
+    <button type="button" data-v="gear" aria-selected="true">Gear</button>
+    <button type="button" data-v="buy" aria-selected="false">Buy</button>
+    <button type="button" data-v="steps" aria-selected="false">Steps</button>
+    <button type="button" data-v="alerts" aria-selected="false">Alerts</button>
+  </nav>
+  <div class="mini" id="mini" hidden>
+    <span class="handle" title="Drag to move"></span>
+    <button type="button" class="ic lockbtn" id="munlock" title="Locked: clicks go to the game. Click to unlock every overlay"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></button>
+    <button type="button" class="ic" id="mset" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <button type="button" class="ic" id="unfold" title="Show everything (tabs, prices, the whole list)"><svg viewBox="0 0 24 24"><path d="M4 14v6h6M20 10V4h-6M20 4l-7 7M4 20l7-7"/></svg></button>
+    <button type="button" class="ic" id="mclose" title="Hide (the dock's Dragon Gear icon or its key brings it back)"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+  </div>
+  <section class="pane" id="pane">
+    <div class="sum" id="sum"></div>
+    <div class="src" id="src"></div>
+    <div class="chipbar"><button type="button" class="cb l" id="chl" hidden aria-label="Scroll left">‹</button><div class="chips" id="chips"></div><button type="button" class="cb r" id="chr" hidden aria-label="Scroll right">›</button></div>
+    <div class="list" id="list"></div>
+    <div class="prog"><i id="prog"></i></div>
+  </section>
+  <div class="tip" id="tip" hidden></div>
+  <div class="toast" id="toast"></div>
+  <div class="grip" id="grip" title="Resize"></div>
+</main>
+</body>
+</html>

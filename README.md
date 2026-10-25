@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.15.2" src="https://img.shields.io/badge/version-0.15.2-f2c35b?style=for-the-badge">
+  <img alt="Version 0.16.0" src="https://img.shields.io/badge/version-0.16.0-f2c35b?style=for-the-badge">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-1f6fd6?style=for-the-badge">
   <a href="https://github.com/Flavbestlol/flav-toolkit"><img alt="A Flav-Toolkit add-on" src="https://img.shields.io/badge/a%20Flav--Toolkit-add--on-ff8540?style=for-the-badge"></a>
   <img alt="Vibe coded" src="https://img.shields.io/badge/vibe-coded-6fe3a1?style=for-the-badge">
@@ -92,13 +92,13 @@ The add-on also has a full page at `http://127.0.0.1:7317` (only on your PC), fo
 
 1. **Flav-Toolkit** reads what the game already sends to your PC: the Market pages it downloads, your bags, your worn gear and who you are (name, server, class). It never sends anything to the game.
 2. It hands that to its add-ons over a local feed. **Dragon Gear Prices** is a small local app (Node.js) that works out the cheapest way to each tier and keeps your plan, your ticks and your alerts.
-3. The **overlay** shows it over the game. Flav-Toolkit's hub starts and stops the app for you.
+3. The **overlay** is the app's own page, shown over the game by Flav-Toolkit, which also starts and stops the app for you. Its keys (show or hide: Ctrl+Alt+M; refresh prices: pick one) are held by Flav-Toolkit and changed in its hub.
 
 When the game isn't being read, prices come from [a2-tracker.com](https://a2-tracker.com)'s public data (hourly), and your gear from the official AION 2 site.
 
 ## Install
 
-You need **Windows 10 or 11** (64-bit), **AION 2**, and **[Flav-Toolkit](https://github.com/Flavbestlol/flav-toolkit)** with [Npcap](https://npcap.com) (Flav-Toolkit's README says how).
+You need **Windows 10 or 11** (64-bit), **AION 2**, and **[Flav-Toolkit](https://github.com/Flavbestlol/flav-toolkit)** 0.7.0 or later with [Npcap](https://npcap.com) (Flav-Toolkit's README says how).
 
 1. **Install it from the hub.** Open Flav-Toolkit's hub (double-click its tray icon), go to **Get add-ons** and click **Install** on *Dragon Gear Prices*. The hub downloads it from Flav-Toolkit's own signed catalogue, checks it, and starts it; it starts with Flav-Toolkit from then on. Everything it needs comes in the package, Node.js included.
 2. **Play.** Start AION 2 with **Play AION 2** in Flav-Toolkit (so the Market can be read), log in, and open the panel from the dock by the minimap.
@@ -179,7 +179,7 @@ AION 2 is a trademark of NCSOFT. This project isn't affiliated with NCSOFT.
 Bug reports, ideas and pull requests are welcome. It's a side project, so answers may take a while.
 
 - **The app** is plain Node.js with no dependencies, in [`app`](app): `server.js` (the local server), `compute.js` (the plan), `market.js` (the Market), `inventory.js`, `alerts.js`, `feed.js` (Flav-Toolkit's feed). The page is in [`app/ui`](app/ui).
-- **The overlay** lives in Flav-Toolkit for now (`crates/flav-app/ui/shop.*`) and calls this app's API.
+- **The overlay** is this app's page `app/ui/overlay.html`, shown over the game by Flav-Toolkit (0.7.0 or later; `overlays` in `addon.json`). It talks to this app's API and to Flav-Toolkit only through `window.flavOverlay`.
 - **Tests**: `node --test app/test/*.test.js` (CI runs them on Windows and Linux).
 - Never commit `settings.json`, `data\`, captures or key files: they are a player's own, and `.gitignore` refuses them.
 
