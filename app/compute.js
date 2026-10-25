@@ -445,7 +445,55 @@ function shopping(data, settings, market = null, inventory = null) {
      undercuts crafting says to open the list. The step carries `split` (what to buy) or `refresh` (what to open) or
      `checked` (the list was seen and crafting wins). */
   let takenOf = new Map(); // item -> listings already bought by an earlier tier of the same piece (each listing once)
-  const splitStage = (stage) => {
+  /* What is already made: a crafted step's item that the bag, storage or warehouse holds (10 of the 18 Splendent
+     gloves crafted before a break) comes off that step before anything is bought or crafted, top of the tree first, so
+     owning a higher item shrinks the steps below it too. `made` (item -> what is left of the stock) runs across the
+     chosen pieces in order, so one stock covers the first step that needs it, not every step; null when the inventory
+     isn't used. The step gets `owned` ({ need, used, have }) and, when nothing is left to craft, `covered`; the steps
+     that use the item get `inHand` on that line. */
+  const ownStage = (stage, made, remove) => {
+    if (!made) return;
+    for (let i = stage.length - 2; i >= 0; i--) { // the tier step itself (last) is the goal: the plan's tiers say what is worn
+      const x = stage[i];
+      if (!(x.makes > 0.05) || x.method === 'convert') continue;
+      const have = ownedOf(x.id);
+      if (!made.has(x.id)) made.set(x.id, have ? have.total : 0);
+      // `makes` is an expected count (18.45 when the tries ahead turn 23 % of them out Splendent): the page shows 18, so
+      // 18 in hand covers it, rather than leaving "0.45 more, ~2 tries"
+      const left = made.get(x.id), need = x.makes, use = left >= 1 && left > need - 0.5 ? need : Math.min(left, need);
+      if (!(use > 0)) continue;
+      made.set(x.id, Math.max(0, left - use));
+      for (const y of stage) for (const row of y.rows) if (row.recipeId && row.recipeId === x.recipeId) row.inHand = (row.inHand || 0) + row.count * (use / need);
+      x.owned = { need, used: use, have };
+      remove(x, use);
+      if (x.makes < 0.05) { x.covered = true; x.makes = 0; x.attempts = 0; }
+    }
+  };
+  /* Craft or buy, for every crafted step still to do: what crafting the rest costs at today's prices (its materials
+     bought or crafted by the cheapest path, failed tries included; what is in hand counts at its price too, since it
+     could be sold or used elsewhere) against buying them on the Exchange: from the item's own list when it was opened
+     in game (exact, whole listings), else the cheapest listing the game saw, else a2-tracker's hourly price. `better`
+     says which is cheaper per item and `saves` by how much for the rest; no `buy` when no price was seen. */
+  const compareStage = (stage) => {
+    for (let i = stage.length - 2; i >= 0; i--) {
+      const x = stage[i];
+      if (!(x.makes > 0.05) || x.method === 'convert' || x.split) continue;
+      const cu = snap.craftUnit(x.id);
+      if (!(cu > 0)) continue;
+      const k = Math.ceil(x.makes - 1e-9);
+      const lad = market ? market.costOf(x.id, k, 'kina') : null;
+      let buy = null;
+      if (lad && lad.listings.length) buy = { count: k, cost: lad.cost, from: lad.listings[0].unit, upTo: lad.maxUnit, exact: lad.exact, source: 'ladder', ageMin: Math.round((Date.now() - lad.at) / 60000) };
+      else {
+        const live = market ? market.min(x.id, 'kina') : null;
+        const price = live ? live.price : prices.now(x.id);
+        if (price != null) buy = { count: k, cost: price * k, from: price, upTo: null, exact: false, source: live ? 'live' : 'hourly', listed: live ? live.count : prices.listings(x.id) };
+      }
+      const buyUnit = buy ? buy.cost / k : null;
+      x.compare = { id: x.id, name: x.item, left: x.makes, craftUnit: cu, craftCost: x.makes * cu, buy, better: buy ? (buyUnit < cu ? 'buy' : 'craft') : null, saves: buy ? Math.abs(cu - buyUnit) * x.makes : null };
+    }
+  };
+  const splitStage = (stage, made = null) => {
     const byRecipe = new Map();
     for (const x of stage) {
       if (x.recipeId) byRecipe.set(x.recipeId, x);
@@ -462,6 +510,7 @@ function shopping(data, settings, market = null, inventory = null) {
         else if (row.recipeId && byRecipe.has(row.recipeId)) remove(byRecipe.get(row.recipeId), d, depth + 1);
       });
     };
+    ownStage(stage, made, remove);
     for (let i = stage.length - 2; i >= 0; i--) { // the tier step itself (last) is the goal, not a candidate
       const x = stage[i], need = x.makes;
       if (!(need > 0.05) || x.method === 'convert') continue;
@@ -489,6 +538,7 @@ function shopping(data, settings, market = null, inventory = null) {
         x.refresh = { id: x.id, name: x.item, icon: x.icon, min: price, listed: live ? live.count : prices.listings(x.id), craftUnit: cu, need, why: stale ? 'stale' : live ? 'not-opened' : 'tracker' };
       }
     }
+    compareStage(stage);
   };
   const items = {}, pieces = [];
   let buy = null;
@@ -502,6 +552,13 @@ function shopping(data, settings, market = null, inventory = null) {
     rows: st.rows.map(r => ({ id: r.itemId, recipeId: r.recipeId || null, name: engine.name(r.itemId), icon: icon(r.itemId), count: r.count * k, source: r.source, unit: r.unit, cost: r.source === 'buy' || r.source === 'npc' ? r.count * k * r.unit : 0, have: ownedOf(r.itemId) })),
   });
   const withCost = st => { st.cost = st.rows.reduce((t, r) => t + (r.cost || 0), 0); return st; };
+  // The chosen pieces (the shopping list's chips), known before the steps are built, so what is already made is
+  // counted for them, in order. Every planned piece is one of `planned`.
+  const shop = settings.shop || {};
+  const planned = Slots.slotsFor(settings.class).filter(s => { const r = Slots.rangeOf(settings.plan, s.id); return !r.skip && chains.get(s.gear); }).map(s => s.id);
+  let sel = (Array.isArray(shop.sel) ? shop.sel : []).filter(x => planned.includes(x));
+  if (!sel.length && planned.length) sel = [planned[0]];
+  const made = useInv ? new Map() : null;
   for (const s of Slots.slotsFor(settings.class)) {
     const r = Slots.rangeOf(settings.plan, s.id), ch = chains.get(s.gear);
     if (r.skip || !ch) continue;
@@ -527,9 +584,9 @@ function shopping(data, settings, market = null, inventory = null) {
       }
       if (st.previous) out.rows.unshift({ name: engine.name(st.previous), icon: icon(st.previous), count: 1, source: st.tier - 1 === r.have ? 'own' : 'craft' });
       stage.push(out);
-      splitStage(stage);
+      splitStage(stage, sel.includes(s.id) ? made : null);
       for (const x of stage) {
-        if (x.makes < 0.01 && !x.split) continue; // wholly replaced by a bought step after it
+        if (x.makes < 0.01 && !x.split && !x.covered) continue; // wholly replaced by a bought or owned step after it
         steps.push(withCost(x));
         for (const row of x.rows) if ((row.source === 'buy' || row.source === 'npc') && row.count > 1e-9) addBuy(row.id, row.count, row.unit, row.source === 'npc');
         if (x.split) addBuy(x.split.id, x.split.used, x.split.cost / x.split.buy, false);
@@ -538,10 +595,6 @@ function shopping(data, settings, market = null, inventory = null) {
     pieces.push({ slot: s.id, label, have: r.have, goal: r.goal, icon: icon(ch.tiers[r.goal - 1].itemId), item: engine.name(ch.tiers[r.goal - 1].itemId), ok, steps, buy: [...buy].map(([id, count]) => ({ id, count })), kina: [...buy].reduce((t, [id, c]) => t + c * items[id].unit, 0) });
   }
   // What the chosen pieces need, merged: buy list (rounded up), steps with their cost, and the Kina to buy for it.
-  const shop = settings.shop || {};
-  const ids = pieces.map(p => p.slot);
-  let sel = (Array.isArray(shop.sel) ? shop.sel : []).filter(x => ids.includes(x));
-  if (!sel.length && ids.length) sel = [ids[0]];
   // Across the chosen pieces' steps, in order, what is owned is used up as the steps come: a stock of 20 covers the
   // first step that needs it, not every step. Each bought row gets `used` (from stock), `missing` (left to buy) and a
   // cost for the missing part; a step's cost follows. With the setting off, nothing is used and `missing` = `count`.
@@ -552,7 +605,7 @@ function shopping(data, settings, market = null, inventory = null) {
     for (const r of st.rows) {
       const bought = r.source === 'buy' || r.source === 'npc';
       if (!bought || !useInv || !r.have) { r.used = 0; r.missing = r.count; continue; }
-      if (!stock.has(r.id)) stock.set(r.id, r.have.total);
+      if (!stock.has(r.id)) stock.set(r.id, made && made.has(r.id) ? made.get(r.id) : r.have.total); // what a crafted step took is gone
       const use = Math.min(stock.get(r.id), r.count);
       stock.set(r.id, stock.get(r.id) - use);
       r.used = use; r.missing = r.count - use;
