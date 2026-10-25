@@ -46,18 +46,19 @@ In the page:
     Lines your bag already covers keep their full count, marked covered, with the price to buy more.
     A highlighted warning says when prices are not the Exchange's own: start AION 2 with
     "Play AION 2" in Flav-Toolkit's tray and open the Exchange before you buy.
-  - "Show in overlay" in a piece's details sends it to the Flav-Toolkit overlay in game.
-    In game, the overlay has a round helm icon by the minimap: click it to open or shrink
-    the list, drag it to move it.
+  - "Show in overlay" in a piece's details sends it to the shopping list over the game.
+    The list is this app's own page (overlay.html), shown over the game by Flav-Toolkit 0.7.0 or
+    later: drag its title to move it, its corner grip sets how tall it may get. Hide it with its
+    "-" button; the dock's Dragon Gear icon, the hub's Open or its key (Ctrl+Alt+M) brings it back.
   - Refresh prices, Alerts (hourly check + Windows notification; starts with Windows), Settings.
   - Alerts of your own, on any item: type its name (icons help you pick), then a price to buy at,
     a price to sell at, how many are listed, or cheaper / pricier than usual by a percentage.
     Checked whenever the Exchange is seen in game and on every hourly refresh: a Windows
     notification, the dock's icon lights up with the item's picture, and the overlay's Alerts
     tab adds them too (type an item there; the keys go back to the game after) and lists them.
-  - In game, a key refreshes the overlay's prices like its ↻ button: Ctrl+R by default (overlay
-    settings: Ctrl+Shift+R, Alt+R or Off). It only works while the list is on screen; with the
-    list away the key is the game's.
+  - Keys in the game, held by Flav-Toolkit (this app registers none): show or hide the list
+    (Ctrl+Alt+M) and refresh prices (no key until you pick one). Change them in the hub:
+    Dragon Gear Prices > Settings > Keys in the game.
 
 settings.json            Saved automatically by the page.
 data\price-log.csv       One line per piece per refresh. Opens in Excel.

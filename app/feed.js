@@ -8,6 +8,11 @@
    Nothing here reaches past this PC: the feed is local, the token is the core's, and a replay (someone's recording)
    is not acted on.
 
+   The shopping list is this app's page over the game (`overlays` in addon.json), shown by the core: the feed carries
+   what goes with it. The hub's Open and Settings (`show`), the keys the player picked for this add-on (`hotkey`, from
+   `hotkeys` in addon.json; the core holds them, this app never registers a key), showing or hiding the list
+   (`overlay`), and unlocking every overlay from the list's own padlock (`lock`, only from that click).
+
    Needs Node's built-in WebSocket client (Node 22+; the app ships Node 24). Without the core running it just waits:
    feed.json appears, it connects; the core quits, it waits again. */
 
@@ -20,15 +25,20 @@ const TYPES = ['market-summary', 'market-listings', 'item-stats', 'inventory', '
 const LOOK_MS = 3000;     // how often feed.json is looked for while not connected
 const HOLD_MS = 30000;    // after a refusal (wrong version, unknown type): wait before trying again
 const BEAT_MS = 2000;
+const FEATURES = ['lock', 'hotkeys']; // what this add-on understands beyond events (an older core ignores it)
 
 const feedFile = () => process.env.FLAV_FEED_FILE || path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'com.flavbest.flav-toolkit', 'feed.json');
 
 class Feed {
-  /* onEvent(event): one game event; onStatus({ capturing, game, source, text }); version: this add-on's. */
-  constructor({ version, onEvent, onStatus = null } = {}) {
+  /* onEvent(event): one game event; onStatus({ capturing, game, source, text }); onShow('open' | 'settings'): the hub's
+     buttons; onHotkey(id): one of this add-on's keys pressed in the game; version: this add-on's. */
+  constructor({ version, onEvent, onStatus = null, onShow = null, onHotkey = null } = {}) {
     this.version = version || '0.0.0';
     this.onEvent = onEvent || (() => {});
     this.onStatus = onStatus;
+    this.onShow = onShow;
+    this.onHotkey = onHotkey;
+    this.granted = []; this.locked = false;
     this.sock = null; this.beatTimer = null; this.holdUntil = 0;
     this.state = 'waiting';   // waiting | connecting | connected | refused: … | disconnected
     this.core = null; this.source = null; this.game = false; this.capturing = false; this.text = null;
@@ -60,7 +70,7 @@ class Feed {
     let ws;
     try { ws = new WebSocket('ws://127.0.0.1:' + info.port + '/feed?token=' + encodeURIComponent(info.token)); } catch { this.state = 'cannot connect'; return; }
     this.sock = ws; this.state = 'connecting';
-    ws.addEventListener('open', () => this.send({ op: 'hello', addon: ID, version: this.version, events: 1, types: TYPES }));
+    ws.addEventListener('open', () => this.send({ op: 'hello', addon: ID, version: this.version, events: 1, types: TYPES, features: FEATURES }));
     ws.addEventListener('message', m => this.take(typeof m.data === 'string' ? m.data : String(m.data)));
     ws.addEventListener('close', () => this.drop());
     ws.addEventListener('error', () => this.drop());
@@ -73,6 +83,7 @@ class Feed {
     switch (msg.op) {
       case 'welcome':
         this.state = 'connected'; this.core = msg.core || null; this.connectedAt = Date.now();
+        this.granted = Array.isArray(msg.features) ? msg.features.filter(f => FEATURES.includes(f)) : [];
         this.status(msg.status);
         this.beat();
         clearInterval(this.beatTimer); this.beatTimer = setInterval(() => this.beat(), BEAT_MS);
@@ -90,6 +101,15 @@ class Feed {
         break;
       case 'status':
         this.status(msg);
+        break;
+      case 'show':
+        if ((msg.what === 'open' || msg.what === 'settings') && this.onShow) { try { this.onShow(msg.what); } catch { /* fine */ } }
+        break;
+      case 'hotkey':
+        if (typeof msg.id === 'string' && msg.id.length <= 40 && this.onHotkey) { try { this.onHotkey(msg.id); } catch { /* fine */ } }
+        break;
+      case 'lock':
+        this.locked = !!msg.locked;
         break;
       default: break;
     }
@@ -126,12 +146,17 @@ class Feed {
   }
   unnotify(title) { this.notes.delete(String(title).slice(0, 80)); return this.send({ op: 'unnotify', title: String(title).slice(0, 80) }); }
   log(level, msg) { return this.send({ op: 'log', level, msg: String(msg).slice(0, 300) }); }
+  /* Show or hide one of this add-on's overlays (the core shows it while the game is in front). */
+  overlay(id, shown) { return this.send({ op: 'overlay', id: String(id), shown: !!shown }); }
+  /* The player clicked the padlock on this add-on's overlay: every overlay unlocks. Only from that click, and only
+     when the core granted `lock` (it ignores it otherwise). */
+  unlock() { return this.granted.includes('lock') ? this.send({ op: 'lock', locked: false }) : false; }
 
   info() {
-    return { state: this.state, core: this.core, source: this.source, game: this.game, capturing: this.capturing, text: this.text, events: this.events, since: this.connectedAt ? new Date(this.connectedAt).toISOString() : null, file: feedFile() };
+    return { state: this.state, core: this.core, features: this.granted, locked: this.locked, source: this.source, game: this.game, capturing: this.capturing, text: this.text, events: this.events, since: this.connectedAt ? new Date(this.connectedAt).toISOString() : null, file: feedFile() };
   }
 
   close() { clearInterval(this.timer); clearInterval(this.beatTimer); try { this.sock && this.sock.close(); } catch { /* fine */ } this.sock = null; }
 }
 
-module.exports = { Feed, ID, TYPES, feedFile };
+module.exports = { Feed, ID, TYPES, FEATURES, feedFile };

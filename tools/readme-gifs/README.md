@@ -7,6 +7,10 @@ cursor and captions. Re-run it whenever the overlay changes.
 
 Nothing here talks to the game, and nothing from a real session is used.
 
+> **To redo before the next shoot:** since 0.16.0 the overlay is this app's own `app/ui/overlay.html` (served by the
+> demo app, talking to `window.flavOverlay`); the recorder still drives the core's old `shop.html` through
+> `fake_host.js`. Point the stage at the demo app's page and give `fake_host.js` a `flavOverlay` instead.
+
 ## What you need
 
 - Python 3 with Playwright (`pip install playwright`, then `playwright install chromium`), Node.js, ffmpeg.

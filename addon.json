@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "market-crafting",
   "name": "Dragon Gear Prices",
-  "version": "0.15.2",
+  "version": "0.16.0",
   "author": "Flavbest",
   "emblem": "emblem.png",
   "kind": "external",
@@ -23,6 +23,32 @@
   "health": {
     "get": "http://127.0.0.1:7317/api/status"
   },
+  "overlays": [
+    {
+      "id": "list",
+      "name": "Shopping list",
+      "page": "http://127.0.0.1:7317/overlay.html",
+      "size": [
+        360,
+        560
+      ],
+      "min": [
+        360,
+        60
+      ]
+    }
+  ],
+  "hotkeys": [
+    {
+      "id": "toggle",
+      "name": "Show or hide the shopping list",
+      "default": "Ctrl+Alt+M"
+    },
+    {
+      "id": "refresh",
+      "name": "Refresh prices"
+    }
+  ],
   "events": {
     "version": 1,
     "types": [
