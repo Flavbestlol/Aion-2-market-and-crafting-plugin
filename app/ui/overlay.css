@@ -302,6 +302,10 @@ small.pre { margin: 0 1px 0 0 !important; font-size: 0.72em !important; color: v
 .cob .cbr .k { display: inline-block; width: 58px; font: 700 9.5px var(--num); letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
 .cob .cbr small { color: var(--dim); }
 .cob.hint { cursor: copy; }
+.cob.art .artb { margin: 5px 0 2px; padding: 3px 10px; min-height: 26px; border-radius: 8px; font: 700 11px var(--num); letter-spacing: 0.04em; color: var(--gold-hi); background: rgba(242, 195, 91, 0.12); box-shadow: inset 0 0 0 1px rgba(242, 195, 91, 0.4); cursor: pointer; }
+.cob.art .artb:hover { background: rgba(242, 195, 91, 0.22); }
+.cob .sv.dear { color: var(--bad); }
+.cob .cbn { font: 600 11.5px var(--ui); color: var(--ink); margin: 1px 0 2px; }
 .hv.bt { color: var(--done); box-shadow: inset 0 0 0 1px rgba(111, 227, 161, 0.45); }
 .mcheck { margin: 4px 2px 8px; padding: 8px 10px; border-radius: 14px; background: linear-gradient(180deg, rgba(111, 227, 161, calc(0.1 * var(--panel))), rgba(111, 227, 161, calc(0.03 * var(--panel)))); box-shadow: inset 0 0 0 1px rgba(111, 227, 161, 0.28); }
 .mcheck .mh { display: flex; align-items: center; gap: 6px; }

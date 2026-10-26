@@ -69,6 +69,7 @@ It keeps itself up to date: when you buy, craft or move something, or open an it
 
 - **Step by step**: get the Kina, then each craft in order with its cost, its tries and its materials.
 - **Buy some, craft the rest.** When some listings on the Market are cheaper than crafting one more, the step says how many to buy, up to what price, how many to craft and what it saves.
+- **Craft it myself.** When the gold Artisan's piece is cheaper to buy than to craft, the plan buys it and says so, with both prices. One click on *Craft it myself* puts its green, blue and gold steps back on the list, with how many of each.
 - **What you already made counts.** Crafted items in your bag (10 of the 18 Splendent gloves, made before a break) come off their step: fewer to make, fewer tries, and the next step says they're in hand. A step you have all of is done by itself.
 - **Craft or buy?** Every crafting step compares crafting the rest with buying it on the Market, and says to buy and skip the step when that's cheaper.
 - **Splendent count while you craft.** Crafting a batch (79 Orichalcum Gloves to get 18 Splendent), the top of the list says how many came out Splendent so far: *8 Splendent · of 37 made · 22 %*, counted from the game as each piece lands, without stopping to open the bag. Exact with Flav-Toolkit 0.16.1 or later, which tells every stack in the bag apart.
