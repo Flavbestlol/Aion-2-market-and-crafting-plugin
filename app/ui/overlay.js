@@ -432,8 +432,30 @@
         all ? null : h("div", { class: "cbr" }, h("span", { class: "k", text: "Craft" }), b(`${cnt(x.craftRest)}×`), h("span", { text: ` at ~${pfmt(Math.round(x.craftUnit))} each` }))));
     }
     if (st.compare && !st.split) out.push(compareCard(st.compare));
+    const art = st.artisanChoice && artisanCard(st.artisanChoice);
+    if (art) out.push(art);
     return out;
   };
+  // The Artisan's piece a tier needs (Artisan's Splendent Diamond Earrings): the plan buys it when that costs less than
+  // crafting it (the combo's tries included), and then the green, blue and gold steps that make it are not on the list.
+  // The card says which the plan does and offers the other: "Craft it myself" puts those steps on the list, with their
+  // counts; "Buy it instead" takes them off again. Kept per piece.
+  function artisanCard(c) {
+    const toggle = (on) => (e) => { e.stopPropagation(); change({ craft_artisan: { slot: c.slot, on } }); };
+    const prices = [
+      h("div", { class: "cbr" }, h("span", { class: "k", text: "Market" }), h("span", { text: `~${kfmt(c.buyUnit)} each` })),
+      h("div", { class: "cbr" }, h("span", { class: "k", text: "Craft" }), h("span", { text: `~${kfmt(c.craftUnit)} each` }), h("small", { text: " · green, blue and gold steps, failed tries included" })),
+    ];
+    if (!c.crafting) {
+      return h("div", { class: "cob buy art" },
+        h("div", { class: "cbh" }, h("span", { class: "cl", text: "Bought, not crafted" }), h("span", { class: "sv", text: `saves ~${kfmt(c.craftUnit - c.buyUnit)}` })),
+        h("div", { class: "cbn", text: c.name }), ...prices, h("button", { type: "button", class: "artb", onclick: toggle(true), title: "Put the steps that make it on the list (green, blue, then the gold one), with how many of each" }, "Craft it myself"));
+    }
+    if (!c.mine) return null; // crafting is the cheaper way anyway: nothing to choose
+    return h("div", { class: "cob art" },
+      h("div", { class: "cbh" }, h("span", { class: "cl", text: "Crafting it yourself" }), c.craftUnit > c.buyUnit ? h("span", { class: "sv dear", text: `~${kfmt(c.craftUnit - c.buyUnit)} more` }) : null),
+      h("div", { class: "cbn", text: c.name }), ...prices, h("button", { type: "button", class: "artb", onclick: toggle(false), title: "Buy it on the Exchange instead and take its steps off the list" }, "Buy it instead"));
+  }
   // Craft or buy, for what the step still has to make (the app does the sums, `compare`): crafting the rest at today's
   // prices (materials in hand counted at their price: they could go elsewhere) against buying them on the Exchange.
   // Buying cheaper: say so, and to skip the step; from the cheapest listing only (the item's list not opened), that is a

@@ -28,13 +28,13 @@ const recipes = [
     ingredients: [i === 0 ? ing(A3, 1, 'Equip') : ing(G[i - 1], 1, 'Equip'), ing(STONE, 10)] })),
 ];
 
-function world({ prices = {}, bag = [] } = {}) {
+function world({ prices = {}, bag = [], shop = {} } = {}) {
   const now = Date.now();
   const quote = price => ({ status: 'current', price, currency: 'Kinah', marketKind: 'items', observedAt: new Date(now).toISOString(), delaySeconds: 0, listings: 10 });
   const quotes = new Map(Object.entries({ [LEATHER]: 1000, [STONE]: 100, ...prices }).map(([id, p]) => [String(id), quote(p)]));
   const data = { catalogue: { items, recipes }, quotes, hist: new Map(), chests: {}, fetchedAt: now };
   const settings = { faction: 'elyos', class: 'Ranger', plan: { Gloves: { have: 0, goal: 1 } }, proficiency: {}, currency: 'USD', quna_pack: { quna: 4000, eur: 44.49 },
-    shop: { sel: ['Gloves'], ticks: {}, use_inventory: true, kina_have: 0, quna_have: 0 }, cheap_when_below_usual_percent: 5, expensive_when_above_usual_percent: 5 };
+    shop: { sel: ['Gloves'], ticks: {}, use_inventory: true, kina_have: 0, quna_have: 0, ...shop }, cheap_when_below_usual_percent: 5, expensive_when_above_usual_percent: 5 };
   const inv = new Inventory(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'flav-owned-')), 'inventory.json'));
   inv.take({ type: 'inventory', kind: 'list', at: Math.floor(now / 1000), stacks: bag.map(([item, count], i) => ({ item, count, container: 'bag', slot: i + 1 })) });
   return C.shopping(data, settings, null, inv).chosen[0].steps;
@@ -112,4 +112,30 @@ test('with "count what I own" off, nothing in the bag changes the steps', () => 
   const s1 = C.shopping(data, settings, null, inv).chosen[0].steps.find(s => s.id === String(A1));
   near(s1.makes, 16, 'full count');
   assert.equal(s1.owned, undefined);
+});
+
+test("an Artisan's piece cheaper to buy: bought, the card says so; Craft it myself puts its steps back", () => {
+  // crafting one costs 64 tries of leather and the stones (well over 100k); on the Exchange it is 10k
+  const bought = world({ prices: { [A3]: 10000 } });
+  assert.equal(stepOf(bought, A1), undefined, 'no green step while it is bought');
+  const t1 = bought.find(s => s.tier === 1);
+  const c = t1.artisanChoice;
+  assert.deepEqual({ slot: c.slot, crafting: c.crafting, mine: c.mine, buy: c.buyUnit }, { slot: 'Gloves', crafting: false, mine: false, buy: 10000 });
+  assert.ok(c.craftUnit > c.buyUnit);
+  assert.equal(t1.rows.find(r => r.id === String(A3)).source, 'buy');
+
+  const mine = world({ prices: { [A3]: 10000 }, shop: { craft_artisan: { Gloves: true } } });
+  near(stepOf(mine, A1).makes, 16, 'the green step is back, with its count');
+  near(stepOf(mine, A2).makes, 4, 'and the blue one');
+  assert.ok(stepOf(mine, A3), 'and the gold one');
+  const m1 = mine.find(s => s.tier === 1);
+  assert.equal(m1.rows.find(r => r.id === String(A3)).source, 'craft');
+  assert.deepEqual([m1.artisanChoice.crafting, m1.artisanChoice.mine], [true, true]);
+});
+
+test("crafting the Artisan's piece already cheaper: crafted, and nothing to choose", () => {
+  const steps = world({ prices: { [A3]: 50_000_000 } });
+  assert.ok(stepOf(steps, A1));
+  const c = steps.find(s => s.tier === 1).artisanChoice;
+  assert.deepEqual([c.crafting, c.mine], [true, false]);
 });

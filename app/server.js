@@ -419,6 +419,12 @@ const server = http.createServer(async (req, res) => {
         if (typeof body.class === 'string') { if (body.class === 'auto') s2.class_mode = 'auto'; else s2.class = body.class; }
         if (Object.keys(s2).length) applySettings(s2);
         if (typeof body.use_inventory === 'boolean') sh.use_inventory = body.use_inventory;
+        // "Craft it myself" for one planned piece: its Artisan's piece is crafted even when buying it costs less
+        const ca = body.craft_artisan;
+        if (ca && typeof ca.slot === 'string' && typeof ca.on === 'boolean' && Slots.LAYOUT.some(x => x.id === ca.slot)) {
+          sh.craft_artisan = { ...(sh.craft_artisan && typeof sh.craft_artisan === 'object' ? sh.craft_artisan : {}) };
+          if (ca.on) sh.craft_artisan[ca.slot] = true; else delete sh.craft_artisan[ca.slot];
+        }
         let alertError = null;
         if (body.alert_add && typeof body.alert_add === 'object') { const r = alerts.add(body.alert_add); if (typeof r === 'string') alertError = r; else alerts.check('refresh'); }
         if (typeof body.alert_toggle === 'string') alerts.toggle(body.alert_toggle.slice(0, 40));
