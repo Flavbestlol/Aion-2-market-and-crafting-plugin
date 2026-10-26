@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { Inventory } = require('../inventory');
-const { Crafting, GAP_MS, SHOW_MS } = require('../crafting');
+const { Crafting, GAP_MS, SHOW_MS, FAIL_MS } = require('../crafting');
 
 // made-up ids in the game's shape: a plain result, its Splendent result, and another recipe
 const PLAIN = 210560901, LUCKY = 210550901, OTHER = 210550902, OTHER_LUCKY = 210540902, ORE = 610530901;
@@ -118,4 +118,74 @@ test('with ids, a piece that comes with the slot number of another stack still c
   const v = cr.view(t);
   assert.deepEqual([v.lucky.n, v.plain.n, v.made], [2, 3, 5]);
   assert.equal(inv.owned(ORE).bag, 475);
+});
+
+// ---- tries, fails and streaks: one try takes the recipe's materials in one change, its piece comes in the next ----
+const INGOT = 610710901, LEATHER = 610720901, STONE = 610530901, ODYLE = 610610901;
+const GREAVES = 210260901, SPL_GREAVES = 210250901, BOOTS = 210260902, SPL_BOOTS = 210250902;
+const mats = [{ itemId: INGOT, quantity: 2 }, { itemId: LEATHER, quantity: 3 }, { itemId: STONE, quantity: 2 }, { itemId: ODYLE, quantity: 1 }];
+const book = { recipes: [
+  { id: 'g', itemId: GREAVES, ingredients: mats, combo: { itemId: SPL_GREAVES, probability: null, probabilityRaw: 2500 } },
+  { id: 'b', itemId: BOOTS, ingredients: [{ itemId: INGOT, quantity: 2 }, { itemId: LEATHER, quantity: 3 }, { itemId: STONE, quantity: 2 }, { itemId: ODYLE, quantity: 1 }], combo: { itemId: SPL_BOOTS, probabilityRaw: 2500 } },
+  { id: 'x', itemId: 210260903, ingredients: [{ itemId: INGOT, quantity: 5 }], combo: { itemId: 210250903, probabilityRaw: 2500 } },
+] };
+const spend = (k = 1) => new Map([[INGOT, -2 * k], [LEATHER, -3 * k], [STONE, -2 * k], [ODYLE, -1]]);
+const got = item => new Map([[item, 1]]);
+
+test('the recorded batch: 15 tries, 14 pieces, the try with no piece failed', () => {
+  const cr = new Crafting();
+  cr.learn({ recipes: [book.recipes[0]] });
+  let t = 1_000_000;
+  // as recorded: S P P S P P (fail) P P P P P P P P
+  const order = 'SPPSPPxPPPPPPPP';
+  for (const c of order) {
+    cr.take(spend(), (t += 1600));
+    if (c !== 'x') cr.take(got(c === 'S' ? SPL_GREAVES : GREAVES), (t += 8000));
+    else t += 20000;
+  }
+  const v = cr.view(t);
+  assert.deepEqual({ tries: v.tries, made: v.made, failed: v.failed, lucky: v.lucky.n }, { tries: 15, made: 14, failed: 1, lucky: 2 });
+  assert.equal(v.chance, 0.25, "the combo's raw 2500 is 25%");
+  assert.equal(v.crafting, false);
+  assert.deepEqual(v.last, { kind: 'plain', dry: 11, ended: 0 }, 'eleven tries without a Splendent since the last one (the fail counts)');
+});
+
+test('streaks build up and end; a try left with no piece fails after a while; materials given back call a try off', () => {
+  const cr = new Crafting();
+  cr.learn({ recipes: [book.recipes[0]] });
+  let t = 1_000_000;
+  const one = item => { cr.take(spend(), (t += 1600)); if (item) cr.take(got(item), (t += 6000)); };
+  one(SPL_GREAVES); one(SPL_GREAVES); one(SPL_GREAVES);
+  let v = cr.view(t);
+  assert.deepEqual([v.streak, v.best, v.last.kind, v.last.streak], [3, 3, 'lucky', 3]);
+  one(GREAVES);
+  v = cr.view(t);
+  assert.deepEqual([v.streak, v.last.kind, v.last.ended], [0, 'plain', 3]);
+  // the last try of the batch: materials gone, no piece, nothing more
+  cr.take(spend(), (t += 1600));
+  assert.equal(cr.view(t).crafting, true);
+  assert.equal(cr.tick(t + 10_000), false, 'not yet');
+  assert.equal(cr.tick(t + FAIL_MS + 1), true);
+  v = cr.view(t + FAIL_MS + 1);
+  assert.deepEqual([v.failed, v.tries, v.last.kind, v.crafting], [1, 5, 'fail', false]);
+  // a try called off: the same materials come back
+  cr.take(spend(), (t += FAIL_MS + 5000));
+  cr.take(new Map([[INGOT, 2], [LEATHER, 3], [STONE, 2], [ODYLE, 1]]), (t += 500));
+  v = cr.view(t);
+  assert.deepEqual([v.tries, v.failed, v.crafting], [5, 1, false]);
+});
+
+test('materials that fit two recipes: the piece says which; other spending is no try', () => {
+  const cr = new Crafting();
+  cr.learn(book);
+  let t = 1_000_000;
+  assert.equal(cr.take(spend(), (t += 1000)), false, 'greaves or boots: not known yet');
+  cr.take(got(SPL_BOOTS), (t += 6000));
+  let v = cr.view(t);
+  assert.deepEqual([v.lucky.id, v.tries, v.made], [SPL_BOOTS, 1, 1]);
+  cr.take(spend(), (t += 1000)); // the run's own recipe fits: a try of it
+  assert.equal(cr.view(t).tries, 2);
+  assert.equal(cr.take(new Map([[INGOT, -7]]), (t += 1000)), false, 'not one try of anything');
+  assert.equal(cr.take(new Map([[INGOT, -2], [LEATHER, -3]]), (t += 1000)), false, 'part of the materials is no try');
+  assert.equal(cr.view(t).tries, 2);
 });

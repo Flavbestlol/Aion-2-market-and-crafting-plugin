@@ -722,25 +722,99 @@
     ];
   }
 
-  // ---- crafting now: how many came out Splendent in the batch being crafted --------------------------
-  // The app counts each crafted piece as it lands in the bag (the game's own inventory updates): its Splendent result
-  // or the plain one. Shown at the top in every view while a batch goes on, and for half an hour after its last piece.
-  let CR = null, crHide = null;
+  // ---- crafting now: tries, pieces, Splendent, fails and streaks in the batch being crafted ---------------
+  // The app counts each try (its materials go in one update) and each piece as it lands (crafting.js). Shown at the
+  // top in every view while a batch goes on, and for half an hour after its last try. A Splendent result is cheered, the
+  // more the longer the streak (Splendent, Double, Triple, then Dragon's luck: sparks, rings, rays, a gold rain); a
+  // failed try or a long dry spell gets a kind word and the honest odds. Each try is its own roll: nothing here says
+  // one is "due".
+  let CR = null, crHide = null, crBan = null;
+  const calm = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
+  const oneIn = (p, k) => fmt(Math.round(1 / Math.pow(p, k)));
+  const KIND = [
+    "The materials are gone, your luck isn't. Fresh odds on the next one.",
+    "It happens to every crafter. Shake it off, next try.",
+    "That one slipped away. The next roll knows nothing about it.",
+  ];
+  // What to say about the latest result, or null (a plain piece mostly says nothing)
+  function craftWords(v) {
+    const l = v.last, p = v.chance;
+    if (!l) return null;
+    if (l.kind === "lucky") {
+      const k = l.streak, title = k === 1 ? "Splendent!" : k === 2 ? "Double Splendent!" : k === 3 ? "Triple Splendent!" : `Dragon's luck ×${k}`;
+      const sub = k === 1 ? (p ? `A ${fmt(p * 100)}% hit` : "Lucky hit") : p ? `${k} in a row · 1 in ${oneIn(p, k)} crafters see that` : `${k} in a row`;
+      return { tone: `l${Math.min(4, k)}`, title, sub };
+    }
+    if (l.kind === "fail") return { tone: "calm", title: "That one didn't make it", sub: KIND[(v.failed - 1) % KIND.length] };
+    if (l.ended >= 2) return { tone: "end", title: `×${l.ended} streak, what a run`, sub: p ? `Back to ${fmt(p * 100)}% from here` : "" };
+    if (l.dry >= 5 && p) {
+      const pr = Math.pow(1 - p, l.dry);
+      return { tone: "calm", title: `${l.dry} in a row without one`, sub: `Only ${fmt(Math.max(1, Math.round(pr * 100)))}% of crafters get this unlucky. The next try is still ${fmt(p * 100)}%.` };
+    }
+    return null;
+  }
+  // The burst on a Splendent result: sparks out of the count, rings, rays from 3 in a row, a gold rain over the list
+  function burst(el, level) {
+    if (calm()) return;
+    const fx = el.querySelector(".cfx");
+    fx.replaceChildren();
+    const n = [0, 12, 20, 30, 42][level];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.6, d = 34 + Math.random() * (level >= 3 ? 110 : 70);
+      const sp = h("i", { class: `spark${i % 3 === 1 ? " d" : ""}${level === 4 && i % 2 ? " e" : ""}` });
+      sp.style.cssText = `--dx:${Math.round(Math.cos(a) * d)}px;--dy:${Math.round(Math.sin(a) * d * 0.8)}px;--r:${Math.round(Math.random() * 360)}deg;animation-delay:${(Math.random() * 0.12).toFixed(2)}s`;
+      fx.append(sp);
+    }
+    fx.append(h("i", { class: "ring" }));
+    if (level >= 2) fx.append(h("i", { class: "ring r2" }), h("i", { class: "ring r3" }));
+    if (level >= 3) fx.append(h("i", { class: "rays" }));
+    if (level >= 3) {
+      const rain = $("craftrain");
+      rain.replaceChildren();
+      for (let i = 0; i < (level === 4 ? 46 : 26); i++) {
+        const d = h("i", { class: "rain" });
+        d.style.cssText = `left:${Math.round(Math.random() * 100)}%;animation-delay:${(Math.random() * 0.7).toFixed(2)}s;animation-duration:${(1.4 + Math.random() * 0.9).toFixed(2)}s`;
+        rain.append(d);
+      }
+      setTimeout(() => rain.replaceChildren(), 3200);
+    }
+    setTimeout(() => fx.replaceChildren(), 2000);
+  }
   function drawCraft(v) {
     const el = $("craft"), was = CR;
-    CR = v && v.made > 0 ? v : null;
+    CR = v && (v.made > 0 || v.tries > 0) ? v : null;
     clearTimeout(crHide);
-    if (!CR) { if (!el.hidden) { el.hidden = true; el.replaceChildren(); scheduleFit(); } return; }
+    if (!CR) { if (!el.hidden) { el.hidden = true; el.replaceChildren(); clearTimeout(crBan); crBan = null; scheduleFit(); } return; }
     crHide = setTimeout(() => drawCraft(null), Math.max(1000, CR.hideAt - Date.now()));
     const word = /splendent/i.test(CR.lucky.name) ? "Splendent" : "lucky";
+    const fresh = !!(was && CR.seq !== was.seq && CR.last && (!was.last || CR.seq > was.seq));
+    const kind = fresh ? CR.last.kind : null, level = kind === "lucky" ? Math.min(4, CR.last.streak) : 0;
+    const cls = `crow${CR.streak >= 2 ? ` lv${Math.min(4, CR.streak)}` : ""}${kind === "fail" ? " sad" : ""}`;
+    const stats = [b(fmt(CR.tries)), h("span", { text: ` ${CR.tries === 1 ? "try" : "tries"} · ` }), b(fmt(CR.made)), h("span", { text: " made" })];
+    if (CR.failed) stats.push(h("span", { text: " · " }), h("span", { class: "cf", text: `${fmt(CR.failed)} failed` }));
+    const num = h("b", { class: `cn${level ? ` pop l${level}` : ""}` }, fmt(CR.lucky.n), h("em", { text: word }));
+    const pips = [];
+    for (let i = 0; i < 6; i++) pips.push(h("i", { class: `pip${i < CR.streak ? (CR.streak >= 4 ? " hot" : " on") : ""}` }));
+    const oldBan = el.querySelector(".cban");
     el.hidden = false;
-    el.replaceChildren(
-      pic(CR.lucky.icon, "pic sm"),
-      h("div", { class: "cw" }, h("div", { class: "cl", text: "Crafting now" }), h("div", { class: "ct", text: CR.plain.name, title: `${CR.plain.name}, sometimes ${CR.lucky.name}` })),
-      h("div", { class: "cc", title: `${CR.lucky.n} of the ${CR.made} pieces crafted in this batch came out ${CR.lucky.name}. Counted from the game's bag as each piece lands; what you had before isn't counted. A new batch starts the count again.` },
-        h("b", { class: "cn" }, fmt(CR.lucky.n), h("em", { text: word })), h("small", { text: `of ${fmt(CR.made)} made · ${CR.pct}%` })),
-      h("button", { type: "button", class: "ic cx", text: "×", title: "Put the count away (the next piece crafted starts a new one)", onclick: () => post("/api/craft", { clear: true }).then((r) => drawCraft(r.craft)).catch(() => toast("Couldn't reach Dragon Gear")) }));
-    if (was && was.lucky.id === CR.lucky.id && CR.lucky.n > was.lucky.n) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
+    el.replaceChildren(...[
+      h("div", { class: cls },
+        pic(CR.lucky.icon, "pic sm"),
+        h("div", { class: "cw" }, h("div", { class: "cl", text: CR.crafting ? "Crafting now…" : "Crafting now" }), h("div", { class: "ct", text: CR.plain.name, title: `${CR.plain.name}, sometimes ${CR.lucky.name}` }), h("div", { class: "cs" }, ...stats)),
+        h("div", { class: "cc", title: `${CR.lucky.n} of the ${CR.made} pieces made in this batch came out ${CR.lucky.name}${CR.chance ? ` (the recipe's chance: ${fmt(CR.chance * 100)}%)` : ""}. A try whose materials went and no piece came counts as failed. Counted from the game's own updates as each try goes; what you had before isn't counted. A new batch starts the count again.` },
+          num, h("small", { text: `of ${fmt(CR.made)} made · ${CR.pct}%` })),
+        h("button", { type: "button", class: "ic cx", text: "×", title: "Put the count away (the next try starts a new one)", onclick: () => post("/api/craft", { clear: true }).then((r) => drawCraft(r.craft)).catch(() => toast("Couldn't reach Dragon Gear")) }),
+        h("div", { class: "cfx", "aria-hidden": "true" })),
+      CR.streak >= 1 || CR.best >= 2 ? h("div", { class: "cmeter", title: CR.best >= 2 ? `Best streak this batch: ${CR.best} in a row` : null }, h("span", { text: "Streak" }), ...pips, CR.best >= 2 ? h("small", { text: `best ${CR.best}` }) : null) : null].filter(Boolean));
+    // what to say: a new result's words, else the words still showing
+    const w = fresh ? craftWords(CR) : null;
+    if (w) {
+      clearTimeout(crBan);
+      el.append(h("div", { class: `cban ${w.tone}`, role: "status" }, h("div", { class: "bt", text: w.title }), w.sub ? h("div", { class: "bs", text: w.sub }) : null));
+      crBan = setTimeout(() => { const x = el.querySelector(".cban"); if (x) { x.classList.add("out"); setTimeout(() => { x.remove(); scheduleFit(); }, 400); } crBan = null; }, w.tone === "calm" ? 9000 : 6000);
+    } else if (oldBan && crBan) el.append(oldBan);
+    if (level) burst(el, level);
+    if (kind === "fail" && !calm()) el.querySelector(".cfx").append(h("i", { class: "drift" }));
     scheduleFit();
   }
   const loadCraft = () => get("/api/craft").then((r) => drawCraft(r.craft)).catch(() => {});

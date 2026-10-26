@@ -154,6 +154,8 @@ const itemName = id => (data && data.catalogue.items[String(id)] && data.catalog
 const itemIcon = id => (data && data.catalogue.items[String(id)] && data.catalogue.items[String(id)].icon ? '/icon/' + id : null);
 // while the player crafts a batch: how many came out Splendent so far (crafting.js), shown at the top of the overlay
 const crafting = new Crafting({ name: itemName, icon: itemIcon });
+// a try whose piece never came is a failed try: noticed when the next try starts, or here once enough time passed
+setInterval(() => { if (crafting.tick()) tell('craft', JSON.stringify(crafting.view())); }, 5000).unref();
 const alerts = new Alerts({
   settings, save: () => C.saveSettings(settings), lookup, name: itemName, icon: itemIcon,
   fire: f => { toast(f.title, f.text); feed.notify(f.title, f.text, f.icon ? 'http://' + HOST + ':' + PORT + f.icon : null, 'alert'); },
