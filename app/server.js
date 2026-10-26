@@ -9,6 +9,7 @@ const Armory = require('./armory');
 const FX = require('./fx');
 const { Market } = require('./market');
 const { Inventory } = require('./inventory');
+const { Crafting } = require('./crafting');
 const { Me } = require('./me');
 const { Feed } = require('./feed');
 const { Alerts } = require('./alerts');
@@ -41,6 +42,7 @@ async function refresh({ force = false, quiet = false } = {}) {
   busy = { step: 'Starting', done: 0, total: 1, auto }; lastError = null;
   try {
     data = await C.fetchAll(settings, (step, done, total) => { busy = { step, done, total, auto }; }, { force });
+    crafting.learn(data.catalogue);
     // the worn gear: from the game's login list when it has been seen; the official site only when it hasn't and the
     // game isn't being read now (then the next login brings the list)
     if (!applyGameGear() && settings.auto_sync && settings.character && settings.character.name && !readingGame()) await syncGear(false);
@@ -114,6 +116,7 @@ function fromCore(ev) {
   if (ev.type === 'inventory') {
     const kind = inventory.take(ev);
     if (kind === 'list' && applyGameGear()) recompute(); // a login: what is worn now
+    if (kind === 'changed' && crafting.take(inventory.lastDelta)) tell('craft', JSON.stringify(crafting.view()));
     if (kind) changedSoon('inventory');
     return kind ? 'inventory' : null;
   }
@@ -149,6 +152,8 @@ function lookup(id) {
 }
 const itemName = id => (data && data.catalogue.items[String(id)] && data.catalogue.items[String(id)].name) || 'Item ' + id;
 const itemIcon = id => (data && data.catalogue.items[String(id)] && data.catalogue.items[String(id)].icon ? '/icon/' + id : null);
+// while the player crafts a batch: how many came out Splendent so far (crafting.js), shown at the top of the overlay
+const crafting = new Crafting({ name: itemName, icon: itemIcon });
 const alerts = new Alerts({
   settings, save: () => C.saveSettings(settings), lookup, name: itemName, icon: itemIcon,
   fire: f => { toast(f.title, f.text); feed.notify(f.title, f.text, f.icon ? 'http://' + HOST + ':' + PORT + f.icon : null, 'alert'); },
@@ -424,6 +429,7 @@ const server = http.createServer(async (req, res) => {
         return data ? send(res, 200, { ...shoppingNow(), alertError }) : send(res, 409, { error: 'no data yet' });
       }
       if (p === '/api/overlay') return send(res, 200, { shown: listOpen() });
+      if (p === '/api/craft') { if (body.clear === true && crafting.clear()) tell('craft', 'null'); return send(res, 200, { craft: crafting.view() }); }
       if (p === '/api/unlock') return send(res, 200, { ok: feed.unlock() });
       if (p === '/api/open') return send(res, 200, { ok: openPage() });
       if (p === '/api/quit') { send(res, 200, { ok: true }); setTimeout(() => process.exit(0), 200); return; }
@@ -434,6 +440,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/servers') return send(res, 200, Armory.serverList());
     if (p === '/api/shopping') return data ? send(res, 200, shoppingNow()) : send(res, 409, { error: 'no data yet' });
     if (p === '/api/gear') return send(res, 200, gearNow());
+    if (p === '/api/craft') return send(res, 200, { craft: crafting.view() });
     if (p === '/api/overlay-seq') return send(res, 200, { show: overlaySeq });
     if (p === '/api/events') {
       // what the overlay page hears as it happens; a few pages at most, a comment every 25 s keeps it open

@@ -26,6 +26,9 @@ class Inventory {
     this.listAt = 0;          // when the last full list arrived
     this.changedAt = 0;       // when the last change arrived
     this.updates = 0;
+    // what the last change did to each item's count across the bag, storage and warehouse (item -> +n / -n): a craft
+    // landing is +1 of its result; a move between containers comes as one change and nets to 0
+    this.lastDelta = new Map();
     this.saveTimer = null;
     this.load();
   }
@@ -43,11 +46,20 @@ class Inventory {
     } else if (!rows.length) {
       return null;
     }
+    const delta = new Map();
+    const add = (item, n) => delta.set(item, (delta.get(item) || 0) + n);
     for (const r of rows) {
       const key = keyOf(r);
+      if (kind === 'changed') {
+        const was = this.stacks.get(key);
+        if (was && CONTAINERS.includes(was.container)) add(was.item, -was.count);
+        if (CONTAINERS.includes(r.container)) add(r.item, r.count);
+      }
       if (r.count > 0) this.stacks.set(key, { ...r, at });
       else this.stacks.delete(key);
     }
+    for (const [item, n] of delta) if (n === 0) delta.delete(item);
+    this.lastDelta = delta; // a list says what is there, not what came: no delta
     if (kind === 'changed') this.changedAt = at;
     this.updates++;
     this.saveSoon();
