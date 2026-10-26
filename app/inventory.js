@@ -4,6 +4,10 @@
    Flav-Toolkit posts two kinds of update to /api/inventory while the game runs (flav-inventory; ADDONS.md 4b):
      list     every stack in every container, sent when the character enters the world: replaces everything known
      changed  the stacks that just changed (a purchase, a move, loot, a craft): their new counts; 0 = gone
+   Each stack carries its own `id` (Flav-Toolkit 0.16.1 and later): the same for the stack's whole life and never shared,
+   so stacks are kept by it. Not by container and slot: the game's slot number is not a unique place, two stacks can share
+   it (a freshly crafted piece came with the number of a stack of leather already in the bag), and kept by it one hid the
+   other. A core older than 0.16.1 sends no id; then stacks are kept by container and slot as before.
    This keeps the latest picture, answers "how many of this do I own, and where" and "how much Kina do I have", and
    saves it so a restart keeps what was seen. A list older than MAX_AGE is not trusted for ticking lines (the player
    may have played without the toolkit since), only shown as "last seen".
@@ -22,7 +26,7 @@ const CONTAINERS = ['bag', 'storage', 'warehouse'];
 class Inventory {
   constructor(file) {
     this.file = file;
-    this.stacks = new Map();  // `${container}:${slot}` -> { item, count, container, slot, at }
+    this.stacks = new Map();  // keyOf(stack) -> { item, count, container, slot, id, at }
     this.listAt = 0;          // when the last full list arrived
     this.changedAt = 0;       // when the last change arrived
     this.updates = 0;
@@ -48,10 +52,13 @@ class Inventory {
     }
     const delta = new Map();
     const add = (item, n) => delta.set(item, (delta.get(item) || 0) + n);
-    for (const r of rows) {
+    // what a change empties first, then what it fills: a stack moved whole may come as its old place emptied and its
+    // new place filled, both under its id, in either order
+    const order = kind === 'changed' ? [...rows.filter(r => r.count === 0), ...rows.filter(r => r.count > 0)] : rows;
+    for (const r of order) {
       const key = keyOf(r);
       if (kind === 'changed') {
-        const was = this.stacks.get(key);
+        const was = this.stacks.get(key) || this.adopt(r);
         if (was && CONTAINERS.includes(was.container)) add(was.item, -was.count);
         if (CONTAINERS.includes(r.container)) add(r.item, r.count);
       }
@@ -64,6 +71,17 @@ class Inventory {
     this.updates++;
     this.saveSoon();
     return kind;
+  }
+
+  /* A stack kept from before ids (a saved picture or a list from an older core) that this change with an id is about: the
+     same item at the same container and slot. It is taken out, to be put back under its id; null when there is none. */
+  adopt(r) {
+    if (r.id == null) return null;
+    const old = slotKey(r);
+    const was = this.stacks.get(old);
+    if (!was || was.id != null || was.item !== r.item) return null;
+    this.stacks.delete(old);
+    return was;
   }
 
   /* How many of `item` the player owns, by container and in all: { bag, storage, warehouse, total } (0s when unknown). */
@@ -143,6 +161,8 @@ function normalize(s) {
   if (!Number.isInteger(item) || item < 100000000 || item > 999999999 || !Number.isFinite(count) || count < 0 || !Number.isInteger(slot)) return null;
   const container = typeof s.container === 'string' ? s.container : (s.container && s.container.other != null ? 'other' + s.container.other : 'other');
   const out = { item, count: Math.floor(count), container, slot };
+  const id = Number(s.id);
+  if (Number.isInteger(id) && id > 0 && id <= 0xffffffff) out.id = id;
   if (container === 'equipped') {
     if (typeof s.worn === 'string' && /^[a-z0-9-]{1,20}$/.test(s.worn)) out.worn = s.worn;
     if (Number.isInteger(s.level) && s.level >= 0 && s.level <= 40) out.level = s.level;
@@ -150,7 +170,9 @@ function normalize(s) {
   return out;
 }
 
-/* Where a stack is kept: its container and slot; worn items also by item, since two can share a slot number. */
-const keyOf = r => r.container + ':' + r.slot + (r.container === 'equipped' ? ':' + r.item : '');
+/* Where a stack is kept: by its own id; without one (a core older than 0.16.1), by its container and slot, worn items
+   also by item. */
+const slotKey = r => r.container + ':' + r.slot + (r.container === 'equipped' ? ':' + r.item : '');
+const keyOf = r => (r.id != null ? 'id:' + r.id : slotKey(r));
 
 module.exports = { Inventory, KINA, MAX_AGE_MS };

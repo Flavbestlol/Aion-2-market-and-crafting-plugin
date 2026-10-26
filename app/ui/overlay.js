@@ -716,7 +716,7 @@
       pic(CR.lucky.icon, "pic sm"),
       h("div", { class: "cw" }, h("div", { class: "cl", text: "Crafting now" }), h("div", { class: "ct", text: CR.plain.name, title: `${CR.plain.name}, sometimes ${CR.lucky.name}` })),
       h("div", { class: "cc", title: `${CR.lucky.n} of the ${CR.made} pieces crafted in this batch came out ${CR.lucky.name}. Counted from the game's bag as each piece lands; what you had before isn't counted. A new batch starts the count again.` },
-        h("b", { class: "cn" }, fmt(CR.lucky.n), h("em", { text: word })), h("small", { text: `of ${fmt(CR.made)} crafted · ${CR.pct}%` })),
+        h("b", { class: "cn" }, fmt(CR.lucky.n), h("em", { text: word })), h("small", { text: `of ${fmt(CR.made)} made · ${CR.pct}%` })),
       h("button", { type: "button", class: "ic cx", text: "×", title: "Put the count away (the next piece crafted starts a new one)", onclick: () => post("/api/craft", { clear: true }).then((r) => drawCraft(r.craft)).catch(() => toast("Couldn't reach Dragon Gear")) }));
     if (was && was.lucky.id === CR.lucky.id && CR.lucky.n > was.lucky.n) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
     scheduleFit();
