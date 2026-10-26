@@ -71,6 +71,7 @@ It keeps itself up to date: when you buy, craft or move something, or open an it
 - **Buy some, craft the rest.** When some listings on the Market are cheaper than crafting one more, the step says how many to buy, up to what price, how many to craft and what it saves.
 - **What you already made counts.** Crafted items in your bag (10 of the 18 Splendent gloves, made before a break) come off their step: fewer to make, fewer tries, and the next step says they're in hand. A step you have all of is done by itself.
 - **Craft or buy?** Every crafting step compares crafting the rest with buying it on the Market, and says to buy and skip the step when that's cheaper.
+- **Splendent count while you craft.** Crafting a batch (79 Orichalcum Gloves to get 18 Splendent), the top of the list says how many came out Splendent so far: *8 Splendent · of 37 crafted · 22 %*, counted from the game as each piece lands, without stopping to open the bag.
 - **Click a name to copy it**, then paste it in the Exchange search.
 - **Tick as you go.** Ticking a step ticks the ones before it, and *one step at a time* shows just the step you're on.
 

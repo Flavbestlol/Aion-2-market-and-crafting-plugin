@@ -700,6 +700,29 @@
     ];
   }
 
+  // ---- crafting now: how many came out Splendent in the batch being crafted --------------------------
+  // The app counts each crafted piece as it lands in the bag (the game's own inventory updates): its Splendent result
+  // or the plain one. Shown at the top in every view while a batch goes on, and for half an hour after its last piece.
+  let CR = null, crHide = null;
+  function drawCraft(v) {
+    const el = $("craft"), was = CR;
+    CR = v && v.made > 0 ? v : null;
+    clearTimeout(crHide);
+    if (!CR) { if (!el.hidden) { el.hidden = true; el.replaceChildren(); scheduleFit(); } return; }
+    crHide = setTimeout(() => drawCraft(null), Math.max(1000, CR.hideAt - Date.now()));
+    const word = /splendent/i.test(CR.lucky.name) ? "Splendent" : "lucky";
+    el.hidden = false;
+    el.replaceChildren(
+      pic(CR.lucky.icon, "pic sm"),
+      h("div", { class: "cw" }, h("div", { class: "cl", text: "Crafting now" }), h("div", { class: "ct", text: CR.plain.name, title: `${CR.plain.name}, sometimes ${CR.lucky.name}` })),
+      h("div", { class: "cc", title: `${CR.lucky.n} of the ${CR.made} pieces crafted in this batch came out ${CR.lucky.name}. Counted from the game's bag as each piece lands; what you had before isn't counted. A new batch starts the count again.` },
+        h("b", { class: "cn" }, fmt(CR.lucky.n), h("em", { text: word })), h("small", { text: `of ${fmt(CR.made)} crafted · ${CR.pct}%` })),
+      h("button", { type: "button", class: "ic cx", text: "×", title: "Put the count away (the next piece crafted starts a new one)", onclick: () => post("/api/craft", { clear: true }).then((r) => drawCraft(r.craft)).catch(() => toast("Couldn't reach Dragon Gear")) }));
+    if (was && was.lucky.id === CR.lucky.id && CR.lucky.n > was.lucky.n) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
+    scheduleFit();
+  }
+  const loadCraft = () => get("/api/craft").then((r) => drawCraft(r.craft)).catch(() => {});
+
   // ---- tracker: only the next thing to do ---------------------------------
   // One step at a time: the step you are on (the first undone one, or ‹ › away from it), as its full open card,
   // with where you are in the whole plan. Done on the card moves to the next.
@@ -885,16 +908,19 @@
 
   // No refreshing on a timer: the list changes only when you press ↻, tick or pick something
   // (it loads once at start, and again if the app wasn't running then).
-  const shown = (on) => { if (!on && typing) { typing = false; typingTo(false); } if (on) { detectSide(); (G && !G.busy ? Promise.resolve() : load()).then(scheduleFit); } };
+  const shown = (on) => { if (!on && typing) { typing = false; typingTo(false); } if (on) { detectSide(); loadCraft(); (G && !G.busy ? Promise.resolve() : load()).then(scheduleFit); } };
   // What the app tells this page as it happens: one of Dragon Gear's keys pressed in the game, or "Show in overlay"
   // pressed in its browser page (open on the piece sent, on its shopping list).
   const events = () => {
     if (typeof EventSource !== "function") return;
     const es = new EventSource("/api/events");
+    es.addEventListener("open", loadCraft); // again after the app restarted: what it counts now
     // the app finished downloading prices (or reading the gear): load now, so ↻ stops when it is done
     es.addEventListener("state", () => { if (G?.busy || !G) load(); });
     // the bag changed, or the game showed Exchange prices: redraw from what the app holds (no spinner, the scroll kept)
     es.addEventListener("data", () => { if (autoOn()) quietLoad(); });
+    // a crafted piece landed: the count at the top, straight away (whatever "Update by itself" says: nothing is reloaded)
+    es.addEventListener("craft", (e) => { try { drawCraft(JSON.parse(e.data)); } catch { /* not ours */ } });
     es.addEventListener("hotkey", (e) => { if (e.data === "refresh" && !typing) { toast("Refreshing prices…"); refresh(); } });
     es.addEventListener("sent", () => {
       if (!folded) { view = "buy"; localStorage.setItem("shop-view", view); }
@@ -914,6 +940,7 @@
   };
   if (ov()) bridge(); else window.addEventListener("flavoverlay", bridge, { once: true });
   events();
+  loadCraft();
   applySide();
   detectSide();
   setInterval(() => { if (G?.busy) load(); }, 3000); // only while prices are downloading
