@@ -98,3 +98,24 @@ test('nothing is counted before the recipes are known, and junk deltas are ignor
   cr.learn({ recipes: [{ id: 'x', itemId: 'nope', combo: { itemId: LUCKY } }, null] });
   assert.equal(cr.take(new Map([[LUCKY, 1]]), 1), false);
 });
+
+test('with ids, a piece that comes with the slot number of another stack still counts', () => {
+  // the batch that came out short before stacks had ids: pieces with the number of the ore's stack, and with each other's
+  const inv = new Inventory(tmp());
+  const cr = new Crafting({ name: id => names[id] || 'Item ' + id });
+  cr.learn(catalogue);
+  const s = (id, item, count, slot) => ({ id, item, count, container: 'bag', slot });
+  inv.take({ type: 'list', stacks: [s(1, ORE, 500, 129)] });
+  let t = 1_000_000, ore = 500, id = 10;
+  const craft = (item, slot) => {
+    t += 20_000;
+    inv.take({ type: 'changed', stacks: [s(1, ORE, (ore -= 5), 129)] });
+    cr.take(inv.lastDelta, t);
+    inv.take({ type: 'changed', stacks: [s(id++, item, 1, slot)] });
+    cr.take(inv.lastDelta, t);
+  };
+  craft(PLAIN, 129); craft(LUCKY, 178); craft(PLAIN, 178); craft(LUCKY, 178); craft(PLAIN, 40);
+  const v = cr.view(t);
+  assert.deepEqual([v.lucky.n, v.plain.n, v.made], [2, 3, 5]);
+  assert.equal(inv.owned(ORE).bag, 475);
+});

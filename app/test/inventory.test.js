@@ -60,3 +60,48 @@ test('freshness: a picture older than MAX_AGE is not acted on; the file survives
   assert.deepEqual(again.owned(610530001), { bag: 11, storage: 0, warehouse: 0, total: 11 });
   assert.equal(again.status().seen, true);
 });
+
+// Flav-Toolkit 0.16.1 and later: every stack has its own id
+const withId = (id, item, count, container, slot) => ({ id, item, count, container, slot });
+
+test('stacks that share a slot number are kept apart by their ids', () => {
+  const inv = new Inventory(tmp());
+  // as on a recording: a crafted piece with the slot number of the leather already in the bag, two pieces sharing one
+  inv.take({ type: 'list', stacks: [withId(1, 610530901, 40, 'bag', 129)] });
+  inv.take({ type: 'changed', stacks: [withId(2, 210560901, 1, 'bag', 129)] });
+  assert.deepEqual([...inv.lastDelta], [[210560901, 1]]);
+  inv.take({ type: 'changed', stacks: [withId(3, 210560901, 1, 'bag', 178)] });
+  inv.take({ type: 'changed', stacks: [withId(4, 210560901, 1, 'bag', 178)] });
+  assert.deepEqual([...inv.lastDelta], [[210560901, 1]], 'the second piece at the same number is one more, not a replacement');
+  inv.take({ type: 'changed', stacks: [withId(1, 610530901, 35, 'bag', 129)] });
+  assert.deepEqual([...inv.lastDelta], [[610530901, -5]]);
+  assert.equal(inv.owned(210560901).bag, 3);
+  assert.equal(inv.owned(610530901).bag, 35);
+});
+
+test('a stack moved whole is where it went, whichever record comes first', () => {
+  for (const flip of [false, true]) {
+    const inv = new Inventory(tmp());
+    inv.take({ type: 'list', stacks: [withId(9, 533460001, 6, 'bag', 297)] });
+    const recs = [withId(9, 533460001, 0, 'bag', 297), withId(9, 533460001, 6, 'storage', 4)];
+    inv.take({ type: 'changed', stacks: flip ? recs.reverse() : recs });
+    assert.deepEqual(inv.owned(533460001), { bag: 0, storage: 6, warehouse: 0, total: 6 });
+    assert.equal(inv.lastDelta.size, 0, 'a move lands nothing');
+  }
+});
+
+test('a picture from before ids is taken over by the first changes with ids, never counted twice', () => {
+  const file = tmp();
+  const old = new Inventory(file);
+  old.take({ type: 'list', stacks: [stack(610530901, 40, 'bag', 129), stack(KINA, 500, 'bag', 1)] });
+  old.save();
+  const inv = new Inventory(file);
+  inv.take({ type: 'changed', stacks: [withId(1, 610530901, 35, 'bag', 129)] });
+  assert.deepEqual([...inv.lastDelta], [[610530901, -5]]);
+  assert.equal(inv.owned(610530901).bag, 35);
+  assert.equal(inv.stacks.size, 2);
+  inv.save();
+  const back = new Inventory(file);
+  assert.equal(back.stacks.get('id:1').count, 35, 'the id survives a restart');
+  assert.equal(back.kina(), 500);
+});
