@@ -563,7 +563,10 @@ function shopping(data, settings, market = null, inventory = null) {
     const r = Slots.rangeOf(settings.plan, s.id), ch = chains.get(s.gear);
     if (r.skip || !ch) continue;
     const label = (s.pair ? { Earring: 'Earring', Ring: 'Ring' }[s.gear] + ' ' + s.n : s.id === 'MainHand' ? 'Main hand' : s.id === 'SubHand' ? 'Off-hand' : LABELS[s.gear] || s.gear);
-    const cl = engine.climb(ch, snap), steps = [];
+    // "Craft it myself": the player crafts the Artisan's piece even when buying it costs less (shop.craft_artisan)
+    const craftArtisan = !!(shop.craft_artisan && shop.craft_artisan[s.id]);
+    const cl = engine.climb(ch, snap, { craftArtisan }), steps = [];
+    let choiceShown = false;
     buy = new Map(); takenOf = new Map();
     let ok = true;
     for (const st of cl.stages) {
@@ -578,6 +581,12 @@ function shopping(data, settings, market = null, inventory = null) {
       for (const x of st.steps.slice(0, -1)) stage.push(stepOut(x, 1, label));
       const out = stepOut(st.steps[st.steps.length - 1], 1, label);
       out.item = engine.name(st.itemId); out.icon = icon(st.itemId); out.tier = st.tier;
+      // Crafting and buying the Artisan's piece both priced: the first tier that needs it says which the plan does and
+      // offers the other (the overlay's "Craft it myself" / "Buy it instead")
+      if (a && !choiceShown && a.buy != null && a.craft != null) {
+        choiceShown = true;
+        out.artisanChoice = { slot: s.id, name: engine.name(a.itemId), buyUnit: Math.round(a.buy), craftUnit: Math.round(a.craft), crafting: a.source === 'craft', mine: craftArtisan };
+      }
       if (a) {
         const ladderTop = a.source === 'craft' && a.ladderSteps.length ? a.ladderSteps[a.ladderSteps.length - 1].recipeId : null;
         out.rows.unshift({ id: a.itemId, recipeId: ladderTop, name: engine.name(a.itemId), icon: icon(a.itemId), count: a.count, source: a.source === 'craft' ? 'craft' : 'buy', unit: a.unit, cost: a.source === 'craft' ? 0 : a.count * a.unit, have: ownedOf(a.itemId) });

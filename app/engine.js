@@ -230,8 +230,9 @@ function createEngine(catalogue, opts) {
     return out.sort((a, b) => (a.key < b.key ? -1 : 1));
   }
 
-  /* Cost of the whole climb for one chain against one snapshot. */
-  function climb(chain, snap) {
+  /* Cost of the whole climb for one chain against one snapshot. The Artisan's piece each tier needs is crafted or
+     bought, whichever costs less; `craftArtisan` crafts it whenever it can be crafted (the player wants to make it). */
+  function climb(chain, snap, { craftArtisan = false } = {}) {
     const stages = []; let running = 0, unknownFrom = null;
     for (const step of chain.tiers) {
       const a = snap.analyze(step.stage);
@@ -244,7 +245,7 @@ function createEngine(catalogue, opts) {
         const buy = snap.market(step.artisan.itemId);
         const lad = step.artisan.ladder ? snap.analyze(step.artisan.ladder) : null;
         const craft = lad && lad.cost != null ? lad.cost : null;
-        const useCraft = craft != null && (buy == null || craft < buy);
+        const useCraft = craft != null && (craftArtisan || buy == null || craft < buy);
         const unit = useCraft ? craft : buy;
         const count = perAttempt ? step.artisan.quantity / perAttempt : null;
         artisan = { itemId: step.artisan.itemId, buy, craft, unit, source: useCraft ? 'craft' : buy != null ? 'buy' : null, count, line: unit != null && count != null ? unit * count : null, ladderMaterials: lad ? lad.materials : [], ladderSteps: lad && lad.steps ? lad.steps : [] };
