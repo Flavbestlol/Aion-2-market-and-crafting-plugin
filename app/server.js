@@ -407,10 +407,9 @@ const server = http.createServer(async (req, res) => {
         if (typeof body.tick === 'string' && body.tick.length < 200) C.tickStep(sh.ticks, body.tick, data ? C.stepKeys(C.shopping(data, settings, market, inventory)) : []);
         if (body.clear) sh.ticks = {};
         if (body.show) { overlaySeq++; showList(true); tell('sent', overlaySeq); }
-        if (body.plan && typeof body.plan.slot === 'string' && Number.isInteger(body.plan.have) && body.plan.have >= 0 && body.plan.have <= 6) {
-          const cur = Slots.rangeOf(settings.plan, body.plan.slot);
-          settings.plan[body.plan.slot] = { have: body.plan.have, goal: Math.max(cur.goal, Math.min(6, body.plan.have + 1)), skip: false };
-        }
+        // the plan from the overlay's Gear tab: one piece's tier owned or where it stops, or every piece to one tier
+        if (body.plan && typeof body.plan === 'object') Slots.changePlan(settings.plan, settings.class, { slot: body.plan.slot, have: body.plan.have, goal: body.plan.goal, skip: body.plan.skip });
+        if (body.goal_all != null) Slots.changePlan(settings.plan, settings.class, { goalAll: body.goal_all });
         if (body.refresh && !busy) refresh({});
         // from the overlay's ⚙: the currency and reading the gear on its own (same checks as /api/settings)
         const s2 = {};

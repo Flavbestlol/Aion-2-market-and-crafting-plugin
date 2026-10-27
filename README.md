@@ -45,7 +45,8 @@ It keeps itself up to date: when you buy, craft or move something, or open an it
 
 - **Nothing to type.** Log in and every slot fills itself: the tier you wear and its enchant, read from the game's own login data. Swap a piece and it shows at your next login or zone change.
 - **What every tier costs**, in Kina and in your currency ($, € or SAR). Hover a bar for that tier's piece and price.
-- **Own a piece you don't wear?** Click its bar. The plan and its cost follow at once, and *Back to the tier you wear* undoes it.
+- **Stop where you want.** Not everyone takes every piece to T6. *All gear to* T1…T6 sets one stop for every piece, and a click on a piece's bars moves its own stop: the weapon to T2, the necklace from T1 to T3, the rest to T6. What to buy and craft, and what it costs, is only what takes each piece from the tier you own to its stop.
+- **Own a piece you don't wear?** Pick *I own*, then click its bar. The plan and its cost follow at once, and *Back to the tier you wear* undoes it.
 - **The market's mood** on every slot: cheap now, normal, or pricey against its usual price.
 - Click a piece to open its shopping list.
 
