@@ -87,6 +87,10 @@ It keeps itself up to date: when you buy, craft or move something, or open an it
 - **Type it right over the game.** The panel takes the keys while you type, and gives them back to the game when you're done (or press Esc).
 - **Checked every time you open the Exchange in game**: the alert turns to *now*, Flav-Toolkit's dock lights up with the item's picture, and Windows shows a notification.
 
+### Its settings in Flav-Toolkit's hub
+
+Every setting you can simply set (currency, cheap and pricey by how much, reading your gear, counting what you own, price alerts, where every piece stops, and the list's Size, panel, side and updating) is also on Dragon Gear's page in Flav-Toolkit's hub (0.18.0 or later), and in its *Settings* search. Change it in either place and both show it. The list's **Size** and **panel** follow the hub's *All add-ons* settings, like every add-on's.
+
 ### And in the browser
 
 The add-on also has a full page at `http://127.0.0.1:7317` (only on your PC), for the things that need a keyboard: your crafting levels, the leveling planner, your alerts, and the price log (`data\price-log.csv`, opens in Excel).
@@ -99,7 +103,7 @@ The add-on also has a full page at `http://127.0.0.1:7317` (only on your PC), fo
 
 1. **Flav-Toolkit** reads what the game already sends to your PC: the Market pages it downloads, your bags, your worn gear and who you are (name, server, class). It never sends anything to the game.
 2. It hands that to its add-ons over a local feed. **Dragon Gear Prices** is a small local app (Node.js) that works out the cheapest way to each tier and keeps your plan, your ticks and your alerts.
-3. The **overlay** is the app's own page, shown over the game by Flav-Toolkit, which also starts and stops the app for you. Its keys (show or hide: Ctrl+Alt+M; refresh prices: pick one) are held by Flav-Toolkit and changed in its hub.
+3. The **overlay** is the app's own page, shown over the game by Flav-Toolkit, which also starts and stops the app for you. Its keys (show or hide: Ctrl+Alt+M; refresh prices: Ctrl+R) are held by Flav-Toolkit and changed in its hub.
 
 When the game isn't being read, prices come from [a2-tracker.com](https://a2-tracker.com)'s public data (hourly), and your gear from the official AION 2 site.
 

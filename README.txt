@@ -57,8 +57,12 @@ In the page:
     notification, the dock's icon lights up with the item's picture, and the overlay's Alerts
     tab adds them too (type an item there; the keys go back to the game after) and lists them.
   - Keys in the game, held by Flav-Toolkit (this app registers none): show or hide the list
-    (Ctrl+Alt+M) and refresh prices (no key until you pick one). Change them in the hub:
+    (Ctrl+Alt+M) and refresh prices (Ctrl+R). Change them in the hub:
     Dragon Gear Prices > Settings > Keys in the game.
+  - Its settings are in Flav-Toolkit's hub too (0.18.0 or later): Dragon Gear's page there,
+    and Settings. The list's Size and panel follow the hub's All add-ons settings.
+  - Where every piece stops: the Gear tab's All gear to T1...T6, or a click on a piece's
+    bars (Stop here) for that piece alone.
 
 settings.json            Saved automatically by the page.
 data\price-log.csv       One line per piece per refresh. Opens in Excel.

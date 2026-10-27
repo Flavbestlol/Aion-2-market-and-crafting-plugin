@@ -37,17 +37,34 @@
   document.body.classList.toggle("folded", folded);
   // the most height the window may take (set with the grip, kept in this window's storage); the content decides the rest
   let cap = (() => { try { const v = Number(localStorage.getItem("cap")); return Number.isFinite(v) && v >= 120 ? v : 560; } catch { return 560; } })();
-  // which way the list faces: its title, buttons and grip sit toward the middle of the screen. Auto = the half
-  // it sits in (a per-screen preference, kept in this window's storage)
-  const faces = () => { try { return localStorage.getItem("faces") || "auto"; } catch { return "auto"; } };
-  // Size: the whole list larger or smaller (text, pictures, buttons), kept in this window's storage. The window grows
-  // and shrinks with it: its width by the same ratio, its height by what the content then needs.
+  // The list's own look (Size, how solid the panel is, which way it faces, updating by itself, steps one at a time) is
+  // kept by the app, so Flav-Toolkit's hub shows it and its *All add-ons* Size and panel reach it. This window's
+  // storage keeps a copy, so the list opens as it was before the app answers; values this window had from before the
+  // app kept them are handed to it once.
   const SIZES = [[0.9, "90%"], [1, "100%"], [1.15, "115%"], [1.3, "130%"], [1.5, "150%"]];
-  const sizeNow = () => { try { const v = Number(localStorage.getItem("size")); return SIZES.some(([z]) => z === v) ? v : 1; } catch { return 1; } };
+  const STORE = { size: "size", panel: "panel", faces: "faces", auto: "auto", steps_one: "steps-one" };
+  const cached = () => {
+    const out = {}, get = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+    const z = Number(get("size")); if (SIZES.some(([v]) => v === z)) out.size = z;
+    const pn = get("panel"); if (pn != null && pn !== "" && Number.isFinite(Number(pn)) && Number(pn) >= 0) out.panel = Math.min(1, Number(pn));
+    const fc = get("faces"); if (["auto", "left", "right"].includes(fc)) out.faces = fc;
+    const au = get("auto"); if (au === "0" || au === "1") out.auto = au === "1";
+    const so = get("steps-one"); if (so === "0" || so === "1") out.steps_one = so === "1";
+    return out;
+  };
+  const keep = (k, v) => { try { localStorage.setItem(STORE[k], typeof v === "boolean" ? (v ? "1" : "0") : String(v)); } catch { /* fine */ } };
+  const P = { size: 1, panel: 1, faces: "auto", auto: true, steps_one: false, ...cached() };
+  // a change made here: kept by the app (and the hub hears it), and in this window's copy
+  const setPref = (k, v) => { P[k] = v; keep(k, v); post("/api/shop", { prefs: { [k]: v } }).catch(() => {}); };
+  // which way the list faces: its title, buttons and grip sit toward the middle of the screen. Auto = the half it sits in
+  const faces = () => P.faces;
+  // Size: the whole list larger or smaller (text, pictures, buttons). The window grows and shrinks with it: its width by
+  // the same ratio, its height by what the content then needs.
+  const sizeNow = () => P.size;
   let Z = sizeNow();
   document.documentElement.style.zoom = String(Z);
   // Update by itself: redraw when the bag changes or the game shows Exchange prices (nothing is downloaded for it)
-  const autoOn = () => { try { return localStorage.getItem("auto") !== "0"; } catch { return true; } };
+  const autoOn = () => P.auto;
   let sideSeen = "right"; // the half of the screen the window is in
   const applySide = () => {
     const side = faces() === "auto" ? sideSeen : faces();
@@ -176,6 +193,7 @@
   function render() {
     hideTip(); // the bar under the mouse is about to be redrawn
     if (!G) return message("offline");
+    takePrefs(G.prefs, G.prefsSet);
     if (folded) view = "steps";
     $("mini").hidden = !folded;
     // who: the official site's read of the character when there is one, else what the game said at login
@@ -612,19 +630,43 @@
     ];
   }
 
-  // ---- how solid the panels are (a per-screen preference, kept in this window's storage) -----------------------
-  const panelLevel = () => { try { const v = Number(localStorage.getItem("panel")); return Number.isFinite(v) && v > 0 ? Math.min(1, v) : 1; } catch { return 1; } };
+  // ---- how solid the panels are (kept by the app with the rest of the list's look) ------------------------------
+  const panelLevel = () => P.panel;
   function setPanel(level) {
     const v = Math.max(0, Math.min(1, level));
+    P.panel = v;
     document.documentElement.style.setProperty("--panel", String(v));
     document.body.classList.toggle("clear", v < 0.6);
-    try { localStorage.setItem("panel", String(v)); } catch { /* fine */ }
   }
   setPanel(panelLevel());
 
-  // ---- the Steps tab one step at a time (a per-screen preference, kept in this window's storage) ----------------
-  const oneStep = () => { try { return localStorage.getItem("steps-one") === "1"; } catch { return false; } };
-  const setOneStep = (on) => { try { localStorage.setItem("steps-one", on ? "1" : "0"); } catch { /* fine */ } };
+  // ---- the Steps tab one step at a time (kept by the app with the rest of the list's look) ----------------------
+  const oneStep = () => P.steps_one;
+  const setOneStep = (on) => setPref("steps_one", !!on);
+
+  // The list's look as the app keeps it (in every gear read, and when the hub changes it): applied here where it
+  // differs. The first time, what this window had kept and the app hasn't yet is handed over.
+  let moved = null; // what this window handed over, until the app's reads show it kept them
+  function takePrefs(prefs, set) {
+    if (!prefs || typeof prefs !== "object") return;
+    const next = { ...P, ...prefs };
+    if (Array.isArray(set)) {
+      if (!moved) {
+        const mine = cached();
+        moved = {};
+        for (const k of Object.keys(mine)) if (!set.includes(k)) moved[k] = mine[k];
+        if (Object.keys(moved).length) post("/api/shop", { prefs: moved }).catch(() => {});
+      }
+      // a read fetched before the app kept them still has the defaults there
+      for (const k of Object.keys(moved)) if (!set.includes(k)) next[k] = moved[k];
+    }
+    for (const k of Object.keys(STORE)) if (next[k] !== undefined) keep(k, next[k]);
+    if (next.panel !== P.panel) setPanel(next.panel);
+    const sideWas = P.faces;
+    Object.assign(P, { faces: next.faces, auto: next.auto, steps_one: next.steps_one });
+    if (sideWas !== P.faces) applySide();
+    if (next.size !== Z) zoomTo(next.size);
+  }
   let peek = 0; // in one-step mode: how many steps past the next undone one is shown (‹ › arrows); reset on a tick
 
   // ---- adding an alert (the top of the Alerts tab) ---------------------------------------------------------------
@@ -723,11 +765,11 @@
       h("div", { class: "srow col" }, h("div", { class: "sl" }, h("b", { text: "Class" }), h("small", { text: "Gear for your class, read from the game when you log in. Pick another to plan for it" })), cls),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Faces" }), h("small", { text: "Which way the title, buttons and grip sit. Auto: toward the middle of the screen, from where the list is" })),
         h("div", { class: "seg" }, ...[["auto", "Auto"], ["left", "Left"], ["right", "Right"]].map(([v, t]) =>
-          h("button", { type: "button", class: faces() === v ? "on" : "", text: t, onclick: () => { try { localStorage.setItem("faces", v); } catch { /* fine */ } applySide(); render(); } })))),
+          h("button", { type: "button", class: faces() === v ? "on" : "", text: t, onclick: () => { setPref("faces", v); applySide(); render(); } })))),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Size" }), h("small", { text: "Everything in this list larger or smaller; the window follows" })),
         h("div", { class: "seg" }, ...SIZES.map(([z, t]) => h("button", { type: "button", class: Z === z ? "on" : "", text: t, onclick: () => setSize(z) })))),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Update by itself" }), h("small", { text: "Redraw when your bag changes or the game shows you Exchange prices. Nothing is downloaded, nothing is asked of the game" })),
-        sw(autoOn(), () => { try { localStorage.setItem("auto", autoOn() ? "0" : "1"); } catch { /* fine */ } render(); if (autoOn()) quietLoad(); })),
+        sw(autoOn(), () => { setPref("auto", !autoOn()); render(); if (autoOn()) quietLoad(); })),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Keys" }), h("small", { text: "Refresh prices, and show or hide this list: pick them in Flav-Toolkit's hub (Dragon Gear Prices › Settings › Keys in the game)" }))),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Read my gear" }), h("small", { text: "When the game isn't being read: from the official site on every price refresh (the game's own read at login always counts)" })), sw(G?.auto_sync !== false, () => change({ auto_sync: G?.auto_sync === false }))),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Count what I own" }), h("small", { text: "Take the bag, storage and warehouse off what to buy and craft. Off: full counts, what you have shown beside them" })),
@@ -735,7 +777,7 @@
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Steps one at a time" }), h("small", { text: "The Steps tab shows only the step you are on; Done moves to the next" })),
         sw(oneStep(), () => { setOneStep(!oneStep()); render(); })),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Panel" }), h("small", { text: "Solid ↔ glass. Text keeps a dark halo when the panel goes clear" })),
-        h("input", { type: "range", min: "0", max: "100", step: "5", value: String(Math.round(panelLevel() * 100)), oninput: (e) => setPanel(Number(e.target.value) / 100) })),
+        h("input", { type: "range", min: "0", max: "100", step: "5", value: String(Math.round(panelLevel() * 100)), oninput: (e) => setPanel(Number(e.target.value) / 100), onchange: (e) => setPref("panel", Number(e.target.value) / 100) })),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Untick everything" }), h("small", { text: "Start the list over" })), h("button", { type: "button", class: "sbtn", text: "Untick", onclick: () => change({ clear: true }) })),
       h("div", { class: "srow" }, h("div", { class: "sl" }, h("b", { text: "Full app" }), h("small", { text: "Kina and Quna you have, alerts, crafting level: in the browser (typing isn't possible over the game)" })), h("button", { type: "button", class: "sbtn", text: "Open", onclick: () => post("/api/open").catch(() => toast("Couldn't open the browser")) })),
       h("div", { class: "snote", text: "↻ downloads the hourly prices again. What the game shows you on the Exchange, and your bag, come in by themselves. With alerts on, the app also checks every hour (\"Hourly update\")." }),
@@ -990,9 +1032,14 @@
   // A new Size: the page scales, the window takes the same ratio in width, then the height the content needs.
   function setSize(z) {
     if (z === Z) return;
+    setPref("size", z);
+    zoomTo(z);
+  }
+  // the Size applied (from here, or from the app when the hub changed it)
+  function zoomTo(z) {
+    if (z === Z || !SIZES.some(([v]) => v === z)) return;
     const was = Z;
-    Z = z;
-    try { localStorage.setItem("size", String(z)); } catch { /* fine */ }
+    Z = z; P.size = z;
     document.documentElement.style.zoom = String(z);
     const o = ov();
     if (o) o.fit(heightNow || window.innerHeight, Math.round(window.innerWidth * z / was)).catch(() => {});
@@ -1039,6 +1086,8 @@
     es.addEventListener("data", () => { if (autoOn()) quietLoad(); });
     // a crafted piece landed: the count at the top, straight away (whatever "Update by itself" says: nothing is reloaded)
     es.addEventListener("craft", (e) => { try { drawCraft(JSON.parse(e.data)); } catch { /* not ours */ } });
+    // a setting changed in Flav-Toolkit's hub: the list's look at once, then everything else it may change
+    es.addEventListener("settings", (e) => { try { takePrefs(JSON.parse(e.data)); } catch { /* not ours */ } load(); });
     es.addEventListener("hotkey", (e) => { if (e.data === "refresh" && !typing) { toast("Refreshing prices…"); refresh(); } });
     es.addEventListener("sent", () => {
       if (!folded) { view = "buy"; localStorage.setItem("shop-view", view); }

@@ -16,8 +16,8 @@ function feed(opts = {}) {
   return { f, sent };
 }
 
-test('hello asks for the lock and the keys', () => {
-  assert.deepStrictEqual(FEATURES, ['lock', 'hotkeys']);
+test('hello asks for the lock, the keys and the settings in the hub', () => {
+  assert.deepStrictEqual(FEATURES, ['lock', 'hotkeys', 'settings']);
   const src = fs.readFileSync(path.join(__dirname, '..', 'feed.js'), 'utf8');
   assert.match(src, /op: 'hello'[^\n]*features: FEATURES/);
 });
@@ -64,8 +64,10 @@ test('addon.json declares the list as an overlay on this app and its keys', () =
   assert.ok(fs.existsSync(path.join(__dirname, '..', 'ui', 'overlay.html')));
   const ids = m.hotkeys.map((k) => k.id);
   assert.deepStrictEqual(ids, ['toggle', 'refresh']);
-  // the refresh key has no default: it is held whenever the game is in front, and Ctrl+R is the game's
-  assert.strictEqual(m.hotkeys.find((k) => k.id === 'refresh').default, undefined);
+  // Flavbest's pick (2026-10-27): refresh on Ctrl+R by default (the core holds it while the game is in front and this
+  // app runs; the player changes or turns it off in the hub)
+  assert.strictEqual(m.hotkeys.find((k) => k.id === 'refresh').default, 'Ctrl+R');
+  assert.strictEqual(m.hotkeys.find((k) => k.id === 'toggle').default, 'Ctrl+Alt+M');
 });
 
 test('the overlay page talks only to this app and the core\'s bridge', () => {
@@ -93,4 +95,35 @@ test('a gear read never puts back a refresh that has ended (the spinning refresh
   assert.doesNotMatch(src, /busy = prev/);
   assert.match(src, /gearRead = null;/);
   assert.match(src, /tell\('state', 'idle'\)/);
+});
+
+test('the settings are described once granted, again after a change and after a reconnect, never twice the same', () => {
+  const { f, sent } = feed();
+  const groups = [{ id: 'g', name: 'G', items: [{ key: 'a', name: 'A', kind: 'switch', value: true }] }];
+  assert.strictEqual(f.setSettings(groups), false, 'not granted yet: kept, not sent');
+  f.take(JSON.stringify({ op: 'welcome', core: 'x', events: 1, features: ['lock', 'settings'] }));
+  assert.deepStrictEqual(sent.filter((m) => m.op === 'settings'), [{ op: 'settings', groups }], 'sent at welcome');
+  sent.length = 0;
+  assert.strictEqual(f.setSettings(JSON.parse(JSON.stringify(groups))), false, 'the same again: nothing sent');
+  const changed = [{ ...groups[0], items: [{ ...groups[0].items[0], value: false }] }];
+  assert.strictEqual(f.setSettings(changed), true);
+  assert.deepStrictEqual(sent, [{ op: 'settings', groups: changed }]);
+  // the core restarts: the next one hears them again at its welcome
+  f.drop(); f.sock = { readyState: 1, send: (t) => sent.push(JSON.parse(t)), close() {} }; sent.length = 0;
+  f.take(JSON.stringify({ op: 'welcome', core: 'x', events: 1, features: ['settings'] }));
+  assert.deepStrictEqual(sent.filter((m) => m.op === 'settings'), [{ op: 'settings', groups: changed }]);
+  f.close();
+});
+
+test('a setting changed in the hub reaches the app only when settings were granted, and only with a sane key', () => {
+  const got = [];
+  const { f } = feed({ onSetting: (k, v) => got.push([k, v]) });
+  f.take(JSON.stringify({ op: 'setting', key: 'alerts', value: true }));
+  assert.deepStrictEqual(got, [], 'not granted: ignored');
+  f.take(JSON.stringify({ op: 'welcome', core: 'x', events: 1, features: ['settings'] }));
+  f.take(JSON.stringify({ op: 'setting', key: 'alerts', value: true }));
+  f.take(JSON.stringify({ op: 'setting', key: 7, value: true }));
+  f.take(JSON.stringify({ op: 'setting', key: 'x'.repeat(41), value: true }));
+  assert.deepStrictEqual(got, [['alerts', true]]);
+  f.close();
 });
