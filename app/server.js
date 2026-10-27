@@ -13,6 +13,7 @@ const { Crafting } = require('./crafting');
 const { Me } = require('./me');
 const { Feed } = require('./feed');
 const { Alerts } = require('./alerts');
+const Hub = require('./hub');
 
 const PORT = 7317, HOST = '127.0.0.1';
 const UI = path.join(__dirname, 'ui');
@@ -61,7 +62,7 @@ async function syncGear(fresh) {
   gearRead = { step: 'Reading your gear', done: 0, total: 1 };
   try {
     const r = await Armory.lookup(settings.character.name, settings.character.serverId, { fresh });
-    C.applySync(data, settings, r); syncError = null; C.saveSettings(settings);
+    C.applySync(data, settings, r); syncError = null; C.saveSettings(settings); describeSettings();
   } catch (e) { syncError = e.message; }
   gearRead = null;
   if (!busy) tell('state', 'idle');
@@ -77,7 +78,7 @@ function gameGear() {
 function applyGameGear() {
   const g = gameGear();
   if (!g) return false;
-  try { C.applySync(data, settings, g); syncError = null; C.saveSettings(settings); } catch (e) { logErr(e); return false; }
+  try { C.applySync(data, settings, g); syncError = null; C.saveSettings(settings); describeSettings(); } catch (e) { logErr(e); return false; }
   return true;
 }
 /* Flav-Toolkit is reading the game right now: its login list will say what is worn, no website needed. */
@@ -102,7 +103,7 @@ function applyMe() {
       settings.sync = null; // the gear read was another character's
     }
     if (settings.class_mode !== 'manual' && me.class && settings.class !== me.class) settings.class = me.class;
-    C.saveSettings(settings);
+    C.saveSettings(settings); describeSettings(); // another class: other pieces behind "every piece stops at"
     try {
       if (moved) await refresh({});
       else if (who && data && !busyNow() && !applyGameGear() && settings.auto_sync && !readingGame()) await syncGear(true);
@@ -161,7 +162,7 @@ const alerts = new Alerts({
   fire: f => { toast(f.title, f.text); feed.notify(f.title, f.text, f.icon ? 'http://' + HOST + ':' + PORT + f.icon : null, 'alert'); },
 });
 /* The core's feed: this app reads it itself (feed.js). The tray's posts still arrive too for now; both land in fromCore. */
-const feed = new Feed({ version: VERSION, onEvent: fromCore, onShow: show => fromHub(show), onHotkey: id => pressed(id), onStatus: () => { feed.note = report ? 'prices ' + Math.round((Date.now() - lastRefresh) / 60000) + ' min old' : 'loading prices'; } });
+const feed = new Feed({ version: VERSION, onEvent: fromCore, onShow: show => fromHub(show), onHotkey: id => pressed(id), onSetting: (k, v) => { fromHubSetting(k, v).catch(logErr); }, onStatus: () => { feed.note = report ? 'prices ' + Math.round((Date.now() - lastRefresh) / 60000) + ' min old' : 'loading prices'; } });
 
 /* The shopping list over the game: overlay.html, served here and shown by Flav-Toolkit (`overlays` in addon.json).
    The core keeps its window; this app says when to show or hide it (over the feed) and tells the page what happens
@@ -175,6 +176,28 @@ const tell = (name, value) => { for (const res of pages) { try { res.write('even
 function showList(on) { feed.overlay(LIST, !!on); }
 // the hub's Open shows the list; its Settings › Its own settings opens the full page in the browser
 function fromHub(what) { if (what === 'open') showList(true); else if (what === 'settings') openPage(); }
+/* Dragon Gear's settings in Flav-Toolkit's hub (hub.js; ADDONS.md 4d): described now and after every change from
+   anywhere (the overlay's ⚙, the browser page, the hub itself), and a change made in the hub applied like the same
+   change made here. The overlay page hears it (`settings`) and redraws with it. */
+function describeSettings() {
+  try {
+    const goals = Slots.slotsFor(settings.class).map(s => Slots.rangeOf(settings.plan, s.id).goal);
+    feed.setSettings(Hub.describe(settings, { goals: goals.length && goals.every(g => g === goals[0]) ? goals[0] : null }));
+  } catch (e) { logErr(e); }
+}
+async function fromHubSetting(key, value) {
+  const c = Hub.change(key, value);
+  if (c) {
+    if (c.settings) applySettings(c.settings);
+    if ('use_inventory' in c) settings.shop.use_inventory = c.use_inventory;
+    if (c.prefs) settings.overlay = { ...Hub.cleanPrefs(settings.overlay), ...c.prefs };
+    if (c.goal_all) Slots.changePlan(settings.plan, settings.class, { goalAll: c.goal_all });
+    C.saveSettings(settings);
+    if ('alerts' in c) await setAlerts(c.alerts);
+    tell('settings', JSON.stringify(Hub.prefsOf(settings).prefs));
+  }
+  describeSettings(); // nothing is sent when nothing changed: the core believes what it was last told
+}
 // Dragon Gear's keys in the game (addon.json `hotkeys`; the player picks them in the hub, the core holds them)
 function pressed(id) {
   if (id === 'toggle') return showList(!listOpen());
@@ -206,7 +229,7 @@ function searchItems(q) {
 /* Everything the in-game overlay's Gear tab shows, small: one row per slot with its tiers' costs and verdict. */
 function gearNow() {
   const m = FX.money(settings, C.DATA);
-  const out = { at: report ? report.generatedAt : null, busy: busyNow(), error: lastError, syncError, show: overlaySeq, cur: curOf(m), auto_sync: !!settings.auto_sync, class: settings.class, class_mode: settings.class_mode === 'manual' ? 'manual' : 'auto', me: me.known() ? { name: me.name, className: me.class || me.gameClass, level: me.level } : null, synced: !!(settings.sync && settings.sync.detected), character: settings.sync && settings.sync.profile ? { name: settings.sync.profile.name, className: settings.sync.profile.className, gearScore: settings.sync.profile.gearScore } : null, slots: [], total: { money: 0, kina: 0, n: 0 } };
+  const out = { at: report ? report.generatedAt : null, busy: busyNow(), error: lastError, syncError, show: overlaySeq, cur: curOf(m), auto_sync: !!settings.auto_sync, class: settings.class, class_mode: settings.class_mode === 'manual' ? 'manual' : 'auto', me: me.known() ? { name: me.name, className: me.class || me.gameClass, level: me.level } : null, synced: !!(settings.sync && settings.sync.detected), ...(() => { const x = Hub.prefsOf(settings); return { prefs: x.prefs, prefsSet: x.set }; })(), character: settings.sync && settings.sync.profile ? { name: settings.sync.profile.name, className: settings.sync.profile.className, gearScore: settings.sync.profile.gearScore } : null, slots: [], total: { money: 0, kina: 0, n: 0 } };
   if (!report) return out;
   const perKina = report.rate.qunaPer10m / 1e7 * m.pack / m.quna;
   for (const s of Slots.slotsFor(settings.class)) {
@@ -305,6 +328,14 @@ function setAutostart(on) {
   ].join('; '));
 }
 
+/* Price alerts on or off: the hourly check, and this app started at Windows logon while they are on. */
+async function setAlerts(on) {
+  settings.alerts = !!on; C.saveSettings(settings);
+  const r = await setAutostart(settings.alerts);
+  if (settings.alerts) await toast('Dragon Gear alerts are on', 'You will get a message like this when one of your pieces turns cheap. Click it to open the app.');
+  return r;
+}
+
 // Hourly check while alerts are on (and keep data fresh for an open page).
 setInterval(() => { if (settings.alerts && !busy && Date.now() - lastRefresh > 55 * 60000) refresh({ quiet: true }); }, 5 * 60000);
 
@@ -326,7 +357,7 @@ function applySettings(patch) {
     else if (k === 'quna_pack') { for (const f of ['quna', 'eur']) if (Number(v[f]) > 0) settings.quna_pack[f] = Number(v[f]); }
     else if (k === 'xp_per_craft') { for (const [id, x] of Object.entries(v)) { const n = Number(x); if (n > 0) settings.xp_per_craft[id] = n; else delete settings.xp_per_craft[id]; } }
     else if (k === 'my_kina_rate_quna_per_10m') settings[k] = Number(v) > 0 ? Number(v) : null;
-    else if (k.endsWith('_percent')) { if (Number(v) > 0 && Number(v) < 100) settings[k] = Number(v); }
+    else if (k.endsWith('_percent')) { const n = Math.round(Number(v)); if (n >= 1 && n <= 99) settings[k] = n; } // whole percents, as the hub shows them
     else if (k === 'plan') { // slot id -> { have 0..6, goal 1..6, skip }; nothing else is kept
       if (!v || typeof v !== 'object') continue;
       const plan = {};
@@ -364,6 +395,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== 'GET' && req.method !== 'POST') return send(res, 405, { error: 'method' }, undefined, { Allow: 'GET, POST' });
     if (req.method === 'POST') {
       if (req.headers['x-flav'] !== '1' || !String(req.headers['content-type'] || '').startsWith('application/json')) return send(res, 403, { error: 'forbidden' });
+      res.on('close', describeSettings); // any change here, answered or not: the hub shows it (nothing is sent when nothing changed)
       const body = await readBody(req);
       if (p === '/api/refresh') { refresh({ force: !!body.force }); return send(res, 200, status()); }
       if (p === '/api/market' || p === '/api/inventory' || p === '/api/me') {
@@ -372,7 +404,9 @@ const server = http.createServer(async (req, res) => {
         return send(res, changed ? 200 : 400, { ok: !!changed, market: market.status(), inventory: inventory.status(), me: me.status() });
       }
       if (p === '/api/alerts') {
-        // the player's own alerts: add { add: { item, kind, value } }, { remove: id }, { toggle: id }
+        // alerts on or off ({ on }), and the player's own alerts: add { add: { item, kind, value } }, { remove: id },
+        // { toggle: id }. One route: a second `/api/alerts` further down was never reached, so the switch did nothing.
+        if (typeof body.on === 'boolean') { const autostart = await setAlerts(body.on); return send(res, 200, { ...status(), autostart }); }
         let error = null;
         if (body.add) { const r = alerts.add(body.add); if (typeof r === 'string') error = r; else alerts.check('refresh'); }
         if (typeof body.remove === 'string') alerts.remove(body.remove.slice(0, 40));
@@ -384,12 +418,6 @@ const server = http.createServer(async (req, res) => {
         if (!data) return send(res, 409, { error: 'no data yet' });
         if (!C.PROFESSIONS.includes(body.profession)) return send(res, 400, { error: 'profession' });
         return send(res, 200, C.leveling(data, settings, body.profession, body.ranges || {}));
-      }
-      if (p === '/api/alerts') {
-        settings.alerts = !!body.on; C.saveSettings(settings);
-        const r = await setAutostart(settings.alerts);
-        if (settings.alerts) await toast('Dragon Gear alerts are on', 'You will get a message like this when one of your pieces turns cheap. Click it to open the app.');
-        return send(res, 200, { ...status(), autostart: r });
       }
       if (p === '/api/sync') {
         if (body.name != null) settings.character.name = String(body.name).trim().slice(0, 40);
@@ -418,6 +446,8 @@ const server = http.createServer(async (req, res) => {
         if (typeof body.class === 'string') { if (body.class === 'auto') s2.class_mode = 'auto'; else s2.class = body.class; }
         if (Object.keys(s2).length) applySettings(s2);
         if (typeof body.use_inventory === 'boolean') sh.use_inventory = body.use_inventory;
+        // the overlay's own look (hub.js): Size, panel, faces, update by itself, steps one at a time
+        if (body.prefs && typeof body.prefs === 'object') settings.overlay = { ...Hub.cleanPrefs(settings.overlay), ...Hub.cleanPrefs(body.prefs) };
         // "Craft it myself" for one planned piece: its Artisan's piece is crafted even when buying it costs less
         const ca = body.craft_artisan;
         if (ca && typeof ca.slot === 'string' && typeof ca.on === 'boolean' && Slots.LAYOUT.some(x => x.id === ca.slot)) {
@@ -478,6 +508,7 @@ const server = http.createServer(async (req, res) => {
 server.on('error', e => { if (e.code === 'EADDRINUSE') process.exit(0); logErr(e); process.exit(1); }); // already running: the launcher just opens the page
 server.listen(PORT, HOST, () => {
   refresh();
+  describeSettings(); // kept for the hub: sent once the core says hello
   // v1 used a separate hourly task; the app replaces it.
   ps('Unregister-ScheduledTask -TaskName ' + psq(OLD_TASK) + ' -Confirm:$false -ErrorAction SilentlyContinue');
   // With alerts on, the logon task must start this copy: a copy installed from the hub's Get add-ons lives in another

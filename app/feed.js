@@ -13,6 +13,9 @@
    `hotkeys` in addon.json; the core holds them, this app never registers a key), showing or hiding the list
    (`overlay`), and unlocking every overlay from the list's own padlock (`lock`, only from that click).
 
+   Its settings in the hub (`settings`, core 0.18.0, ADDONS.md section 4d): this app describes them (`settings`, after
+   `welcome` and after every change) and applies what the player sets there (`setting`). An older core ignores it.
+
    Needs Node's built-in WebSocket client (Node 22+; the app ships Node 24). Without the core running it just waits:
    feed.json appears, it connects; the core quits, it waits again. */
 
@@ -25,19 +28,22 @@ const TYPES = ['market-summary', 'market-listings', 'item-stats', 'inventory', '
 const LOOK_MS = 3000;     // how often feed.json is looked for while not connected
 const HOLD_MS = 30000;    // after a refusal (wrong version, unknown type): wait before trying again
 const BEAT_MS = 2000;
-const FEATURES = ['lock', 'hotkeys']; // what this add-on understands beyond events (an older core ignores it)
+const FEATURES = ['lock', 'hotkeys', 'settings']; // what this add-on understands beyond events (an older core ignores it)
 
 const feedFile = () => process.env.FLAV_FEED_FILE || path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'com.flavbest.flav-toolkit', 'feed.json');
 
 class Feed {
   /* onEvent(event): one game event; onStatus({ capturing, game, source, text }); onShow('open' | 'settings'): the hub's
-     buttons; onHotkey(id): one of this add-on's keys pressed in the game; version: this add-on's. */
-  constructor({ version, onEvent, onStatus = null, onShow = null, onHotkey = null } = {}) {
+     buttons; onHotkey(id): one of this add-on's keys pressed in the game; onSetting(key, value): one of this add-on's
+     settings changed in the hub; version: this add-on's. */
+  constructor({ version, onEvent, onStatus = null, onShow = null, onHotkey = null, onSetting = null } = {}) {
     this.version = version || '0.0.0';
     this.onEvent = onEvent || (() => {});
     this.onStatus = onStatus;
     this.onShow = onShow;
     this.onHotkey = onHotkey;
+    this.onSetting = onSetting;
+    this.groups = null;       // this add-on's settings as last described (sent again after a reconnect)
     this.granted = []; this.locked = false;
     this.sock = null; this.beatTimer = null; this.holdUntil = 0;
     this.state = 'waiting';   // waiting | connecting | connected | refused: … | disconnected
@@ -88,6 +94,7 @@ class Feed {
         this.beat();
         clearInterval(this.beatTimer); this.beatTimer = setInterval(() => this.beat(), BEAT_MS);
         for (const n of this.notes.values()) this.send(n); // the core forgot them with the connection
+        if (this.groups) this.sendSettings();
         break;
       case 'refused':
         this.state = 'refused: ' + String(msg.reason || 'no reason given');
@@ -110,6 +117,10 @@ class Feed {
         break;
       case 'lock':
         this.locked = !!msg.locked;
+        break;
+      case 'setting':
+        // the player changed one of this add-on's settings in the hub: the app checks the value and applies it
+        if (this.granted.includes('settings') && typeof msg.key === 'string' && msg.key.length <= 40 && this.onSetting) { try { this.onSetting(msg.key, msg.value); } catch { /* fine */ } }
         break;
       default: break;
     }
@@ -135,6 +146,7 @@ class Feed {
     this.sock = null;
     if (!this.state.startsWith('refused')) this.state = 'disconnected';
     this.core = null; this.game = false; this.capturing = false; this.source = null; this.exchange = null;
+    this.sentText = null; this.granted = []; // the next core grants again, and hears every setting again
   }
 
   /* A note for the player: the hub lists it, the dock lights the icon up with the picture. `icon` is this app's own
@@ -153,6 +165,21 @@ class Feed {
   /* The player clicked the padlock on this add-on's overlay: every overlay unlocks. Only from that click, and only
      when the core granted `lock` (it ignores it otherwise). */
   unlock() { return this.granted.includes('lock') ? this.send({ op: 'lock', locked: false }) : false; }
+
+  /* Every settings group with every value as it is now (ADDONS.md 4d): kept, and sent when the core granted
+     `settings`; again after a reconnect. Unchanged since the last send: nothing is sent. */
+  setSettings(groups) {
+    const text = JSON.stringify(groups);
+    if (this.groupsText === text && this.sentText === text) return false;
+    this.groups = groups; this.groupsText = text;
+    return this.sendSettings();
+  }
+  sendSettings() {
+    if (!this.granted.includes('settings') || !this.groups) return false;
+    const ok = this.send({ op: 'settings', groups: this.groups });
+    this.sentText = ok ? this.groupsText : null;
+    return ok;
+  }
 
   info() {
     return { state: this.state, core: this.core, features: this.granted, locked: this.locked, exchange: this.exchange, source: this.source, game: this.game, capturing: this.capturing, text: this.text, events: this.events, since: this.connectedAt ? new Date(this.connectedAt).toISOString() : null, file: feedFile() };

@@ -39,6 +39,7 @@ const DEFAULT_SETTINGS = {
   expensive_when_above_usual_percent: 5,
   alerts: false,     // the hourly check of the plan's pieces (a Windows notification when one turns cheap)
   alerts_list: [],   // the player's own alerts on any item (alerts.js)
+  overlay: {},       // the list over the game: size, panel, faces, auto, steps_one (hub.js); unset = its default
 };
 
 function loadSettings() {
