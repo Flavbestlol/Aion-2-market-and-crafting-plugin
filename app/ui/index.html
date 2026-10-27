@@ -431,11 +431,18 @@ function embers() {
 /* ---------- data ---------- */
 function slots() { return Slots.slotsFor(S.class); }
 function range(id) { return Slots.rangeOf(S.plan, id); }
+/* One piece's change, sent as that change alone (never this page's whole copy of the plan, which may be older than
+   what the overlay, the hub or the game set since), then the plan as the app has it now. */
 function setRange(id, have, goal, skip) {
-  S.plan[id] = { have, goal, skip: !!skip };
-  delete S.plan._default;
-  saveSoon({ plan: S.plan });
+  const was = S.plan[id] || S.plan._default || {};
+  // left out or back in only from the card's own button; a stop chosen takes a piece back in (as in the overlay)
+  const out = typeof skip === 'boolean' ? skip : goal !== range(id).goal ? false : !!was.skip;
+  S.plan[id] = { have, goal, skip: out };
   renderAll();
+  planChange({ plan: { slot: id, have, goal, ...(typeof skip === 'boolean' ? { skip } : {}) } });
+}
+async function planChange(c) {
+  try { await api('/api/shop', c); const st = await api('/api/state'); S = st.settings; R = st.report; renderAll(); } catch (e) { toast('Could not save: ' + e.message); }
 }
 let saveT = null, pending = {};
 function saveSoon(patch) { Object.assign(pending, patch); clearTimeout(saveT); saveT = setTimeout(async () => { const p = pending; pending = {}; try { await api('/api/settings', p); } catch (e) { toast('Could not save: ' + e.message); } }, 400); }
@@ -450,7 +457,7 @@ async function setCurrency(c) {
 }
 function useMyGear(id) {
   const w = S.sync && S.sync.detected && S.sync.detected[id]; if (!w) return;
-  const r = range(id); setRange(id, w.tier, r.goal, false);
+  const r = range(id); setRange(id, w.tier, r.goal);
   toast('Back to your gear: T' + w.tier);
 }
 
@@ -554,7 +561,7 @@ function board(vs) {
     e.stopPropagation();
     const id = pip.closest('.slot').dataset.s, r = range(id), t = Number(pip.dataset.pick);
     const have = r.have === t ? t - 1 : t;
-    setRange(id, have, r.goal, false); // owning more never moves where the piece stops
+    setRange(id, have, r.goal); // owning more never moves where the piece stops
   };
 }
 /* The card that floats over a gold bar: which tier, own / to craft / past the goal, what that tier costs, what a click does. */
@@ -658,7 +665,7 @@ function drawer() {
       '<div class="faint" style="font-size:12px;margin-top:6px">Orange = fewer than 5 listings; the price may jump if you buy a lot.</div>') +
     '</div>';
   $('dx').onclick = closeDrawer;
-  for (const b of $('drawer').querySelectorAll('.tier')) b.onclick = () => { const t = Number(b.dataset.t); if (b.dataset.w === 'have') setRange(s.id, t, r.goal, false); else setRange(s.id, r.have, t, false); };
+  for (const b of $('drawer').querySelectorAll('.tier')) b.onclick = () => { const t = Number(b.dataset.t); if (b.dataset.w === 'have') setRange(s.id, t, r.goal); else setRange(s.id, r.have, t); };
   $('skipBtn').onclick = () => setRange(s.id, r.have, r.goal, !r.skip);
   $('shopOne').onclick = async () => {
     try { await api('/api/shop', { sel: [s.id], show: true }); toast('Sent to the overlay: it shows when the game is in front (Flav-Toolkit must be running).'); }
@@ -753,7 +760,7 @@ function goalSeg() {
   for (const b of $('goalSeg').querySelectorAll('button')) b.onclick = () => {
     const t = Number(b.dataset.goal);
     for (const id of ids) { const r = range(id), was = S.plan[id]; S.plan[id] = { have: r.have, goal: t, skip: !!(was && was.skip) }; }
-    delete S.plan._default; saveSoon({ plan: S.plan }); renderAll();
+    renderAll(); planChange({ goal_all: t });
   };
   $('goalSeg').parentElement.hidden = !S.class;
 }

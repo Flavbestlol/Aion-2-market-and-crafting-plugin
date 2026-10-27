@@ -39,3 +39,20 @@ test('values out of range, unknown slots and other types change nothing', () => 
     assert.equal(Slots.changePlan(plan, 'Ranger', c), false, JSON.stringify(c));
   assert.deepEqual(plan, { Gloves: { have: 1, goal: 3 } });
 });
+
+test('a piece left out: its tier owned and All gear to keep it out, choosing its stop takes it back in', () => {
+  const plan = { Cape: { have: 0, goal: 6, skip: true }, _default: { have: 0, goal: 6, skip: true } };
+  Slots.changePlan(plan, 'Ranger', { slot: 'Cape', have: 2 });
+  assert.equal(plan.Cape.skip, true, 'the tier owned leaves it out');
+  Slots.changePlan(plan, 'Ranger', { goalAll: 3 });
+  assert.equal(plan.Cape.skip, true, 'All gear to leaves it out');
+  assert.equal(plan.Helmet.skip, true, 'so does a piece left out through the old one-range plan');
+  assert.equal(plan._default, undefined);
+  Slots.changePlan(plan, 'Ranger', { slot: 'Cape', have: 2, goal: 3 });
+  assert.equal(plan.Cape.skip, true, 'the same stop sent along with the tier owned leaves it out');
+  Slots.changePlan(plan, 'Ranger', { slot: 'Cape', goal: 4 });
+  assert.deepEqual(plan.Cape, { have: 2, goal: 4, skip: false }, 'a stop chosen: back in');
+  assert.ok(Slots.changePlan(plan, 'Ranger', { slot: 'Cape', skip: true }));
+  assert.equal(Slots.rangeOf(plan, 'Cape').skip, true, 'left out by hand');
+  assert.equal(Slots.changePlan(plan, 'Ranger', { slot: 'Cape', skip: true }), false, 'nothing new');
+});

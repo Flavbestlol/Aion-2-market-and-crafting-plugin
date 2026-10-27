@@ -35,21 +35,23 @@
     const have = Math.min(6, Math.max(0, Math.round(Number(p.have) || 0)));
     return { have, goal, skip: !!p.skip || have >= goal };
   }
-  /* A change to the plan from a click: one piece's tier owned ({ slot, have }) and/or where it stops ({ slot, goal }), or
-     every piece of the class stopping at one tier ({ goalAll }; a piece left out stays out). Where a piece stops is the
-     player's: owning more never moves it, and a piece owned at or past its stop has nothing to craft. Values out of range
-     are ignored. Changes `plan` in place; whether anything changed. */
-  function changePlan(plan, classId, { slot, have, goal, goalAll } = {}) {
+  /* A change to the plan from a click: one piece's tier owned ({ slot, have }), where it stops ({ slot, goal }) or
+     whether it is left out ({ slot, skip }), or every piece of the class stopping at one tier ({ goalAll }). Where a
+     piece stops is the player's: owning more never moves it, and a piece owned at or past its stop has nothing to craft.
+     Choosing a stop takes a piece left out back in; the tier owned and "All gear to" leave that alone. Values out of
+     range are ignored. Changes `plan` in place; whether anything changed. */
+  function changePlan(plan, classId, { slot, have, goal, skip, goalAll } = {}) {
     const tier = (v, lo) => (Number.isInteger(v) && v >= lo && v <= 6 ? v : null);
+    const leftOut = id => { const p = plan[id] || plan._default; return !!(p && p.skip); };
     let changed = false;
     if (typeof slot === 'string' && LAYOUT.some(x => x.id === slot)) {
-      const cur = rangeOf(plan, slot), h = tier(have, 0), g = tier(goal, 1);
-      const next = { have: h == null ? cur.have : h, goal: g == null ? cur.goal : g };
-      if (next.have !== cur.have || next.goal !== cur.goal) { plan[slot] = { ...next, skip: false }; changed = true; }
+      const cur = rangeOf(plan, slot), h = tier(have, 0), g = tier(goal, 1), was = leftOut(slot);
+      const next = { have: h == null ? cur.have : h, goal: g == null ? cur.goal : g, skip: typeof skip === 'boolean' ? skip : g != null && g !== cur.goal ? false : was };
+      if (next.have !== cur.have || next.goal !== cur.goal || next.skip !== was) { plan[slot] = next; changed = true; }
     }
     const all = tier(goalAll, 1);
     if (all != null) {
-      for (const s of slotsFor(classId)) { const cur = rangeOf(plan, s.id), was = plan[s.id]; plan[s.id] = { have: cur.have, goal: all, skip: !!(was && was.skip) }; }
+      for (const s of slotsFor(classId)) { const cur = rangeOf(plan, s.id); plan[s.id] = { have: cur.have, goal: all, skip: leftOut(s.id) }; }
       delete plan._default; changed = true;
     }
     return changed;
