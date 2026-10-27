@@ -41,7 +41,7 @@ const sw = (key, name, help, value) => ({ key, name, help, kind: 'switch', value
    differ (or nothing is planned). */
 function describe(settings, { goals = null } = {}) {
   const { prefs } = prefsOf(settings);
-  const pct = (key, name, help) => ({ key, name, help, kind: 'number', min: 1, max: 50, step: 1, unit: '%', value: Math.min(50, Math.max(1, Math.round(Number(settings[key]) || 5))) });
+  const pct = (key, name, help) => ({ key, name, help, kind: 'number', min: 1, max: 99, step: 1, unit: '%', value: Math.min(99, Math.max(1, Math.round(Number(settings[key]) || 5))) });
   const sizeNow = SIZES.find(([v]) => Number(v) === prefs.size) || SIZES[1];
   return [
     { id: 'plan', name: 'Your plan', items: [
@@ -79,7 +79,7 @@ function change(key, value) {
     case 'currency': return CURRENCIES.some(([v]) => v === value) ? { settings: { currency: value } } : null;
     case 'cheap_when_below_usual_percent':
     case 'expensive_when_above_usual_percent':
-      return typeof value === 'number' && value >= 1 && value <= 50 ? { settings: { [key]: Math.round(value) } } : null;
+      return typeof value === 'number' && value >= 1 && value <= 99 ? { settings: { [key]: Math.round(value) } } : null;
     case 'auto_sync': return typeof value === 'boolean' ? { settings: { auto_sync: value } } : null;
     case 'shop.use_inventory': return typeof value === 'boolean' ? { use_inventory: value } : null;
     case 'alerts': return typeof value === 'boolean' ? { alerts: value } : null;

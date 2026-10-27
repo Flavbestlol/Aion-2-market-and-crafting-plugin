@@ -62,7 +62,7 @@ async function syncGear(fresh) {
   gearRead = { step: 'Reading your gear', done: 0, total: 1 };
   try {
     const r = await Armory.lookup(settings.character.name, settings.character.serverId, { fresh });
-    C.applySync(data, settings, r); syncError = null; C.saveSettings(settings);
+    C.applySync(data, settings, r); syncError = null; C.saveSettings(settings); describeSettings();
   } catch (e) { syncError = e.message; }
   gearRead = null;
   if (!busy) tell('state', 'idle');
@@ -78,7 +78,7 @@ function gameGear() {
 function applyGameGear() {
   const g = gameGear();
   if (!g) return false;
-  try { C.applySync(data, settings, g); syncError = null; C.saveSettings(settings); } catch (e) { logErr(e); return false; }
+  try { C.applySync(data, settings, g); syncError = null; C.saveSettings(settings); describeSettings(); } catch (e) { logErr(e); return false; }
   return true;
 }
 /* Flav-Toolkit is reading the game right now: its login list will say what is worn, no website needed. */
@@ -103,7 +103,7 @@ function applyMe() {
       settings.sync = null; // the gear read was another character's
     }
     if (settings.class_mode !== 'manual' && me.class && settings.class !== me.class) settings.class = me.class;
-    C.saveSettings(settings);
+    C.saveSettings(settings); describeSettings(); // another class: other pieces behind "every piece stops at"
     try {
       if (moved) await refresh({});
       else if (who && data && !busyNow() && !applyGameGear() && settings.auto_sync && !readingGame()) await syncGear(true);
@@ -180,8 +180,10 @@ function fromHub(what) { if (what === 'open') showList(true); else if (what === 
    anywhere (the overlay's ⚙, the browser page, the hub itself), and a change made in the hub applied like the same
    change made here. The overlay page hears it (`settings`) and redraws with it. */
 function describeSettings() {
-  const goals = Slots.slotsFor(settings.class).map(s => Slots.rangeOf(settings.plan, s.id).goal);
-  feed.setSettings(Hub.describe(settings, { goals: goals.length && goals.every(g => g === goals[0]) ? goals[0] : null }));
+  try {
+    const goals = Slots.slotsFor(settings.class).map(s => Slots.rangeOf(settings.plan, s.id).goal);
+    feed.setSettings(Hub.describe(settings, { goals: goals.length && goals.every(g => g === goals[0]) ? goals[0] : null }));
+  } catch (e) { logErr(e); }
 }
 async function fromHubSetting(key, value) {
   const c = Hub.change(key, value);
@@ -194,7 +196,7 @@ async function fromHubSetting(key, value) {
     if ('alerts' in c) await setAlerts(c.alerts);
     tell('settings', JSON.stringify(Hub.prefsOf(settings).prefs));
   }
-  describeSettings(); // also after a value the app refused: the hub shows what holds
+  describeSettings(); // nothing is sent when nothing changed: the core believes what it was last told
 }
 // Dragon Gear's keys in the game (addon.json `hotkeys`; the player picks them in the hub, the core holds them)
 function pressed(id) {
@@ -355,7 +357,7 @@ function applySettings(patch) {
     else if (k === 'quna_pack') { for (const f of ['quna', 'eur']) if (Number(v[f]) > 0) settings.quna_pack[f] = Number(v[f]); }
     else if (k === 'xp_per_craft') { for (const [id, x] of Object.entries(v)) { const n = Number(x); if (n > 0) settings.xp_per_craft[id] = n; else delete settings.xp_per_craft[id]; } }
     else if (k === 'my_kina_rate_quna_per_10m') settings[k] = Number(v) > 0 ? Number(v) : null;
-    else if (k.endsWith('_percent')) { if (Number(v) > 0 && Number(v) < 100) settings[k] = Number(v); }
+    else if (k.endsWith('_percent')) { const n = Math.round(Number(v)); if (n >= 1 && n <= 99) settings[k] = n; } // whole percents, as the hub shows them
     else if (k === 'plan') { // slot id -> { have 0..6, goal 1..6, skip }; nothing else is kept
       if (!v || typeof v !== 'object') continue;
       const plan = {};
@@ -393,7 +395,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== 'GET' && req.method !== 'POST') return send(res, 405, { error: 'method' }, undefined, { Allow: 'GET, POST' });
     if (req.method === 'POST') {
       if (req.headers['x-flav'] !== '1' || !String(req.headers['content-type'] || '').startsWith('application/json')) return send(res, 403, { error: 'forbidden' });
-      res.on('finish', describeSettings); // any change here: the hub shows it (nothing is sent when nothing changed)
+      res.on('close', describeSettings); // any change here, answered or not: the hub shows it (nothing is sent when nothing changed)
       const body = await readBody(req);
       if (p === '/api/refresh') { refresh({ force: !!body.force }); return send(res, 200, status()); }
       if (p === '/api/market' || p === '/api/inventory' || p === '/api/me') {

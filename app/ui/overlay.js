@@ -55,7 +55,12 @@
   const keep = (k, v) => { try { localStorage.setItem(STORE[k], typeof v === "boolean" ? (v ? "1" : "0") : String(v)); } catch { /* fine */ } };
   const P = { size: 1, panel: 1, faces: "auto", auto: true, steps_one: false, ...cached() };
   // a change made here: kept by the app (and the hub hears it), and in this window's copy
-  const setPref = (k, v) => { P[k] = v; keep(k, v); post("/api/shop", { prefs: { [k]: v } }).catch(() => {}); };
+  const mineAt = {}; // when each was last changed here: a read already on its way may still carry the value before
+  const setPref = (k, v) => {
+    P[k] = v; keep(k, v); mineAt[k] = Date.now();
+    if (G && G.prefs) { G.prefs = { ...G.prefs, [k]: v }; if (Array.isArray(G.prefsSet) && !G.prefsSet.includes(k)) G.prefsSet.push(k); }
+    post("/api/shop", { prefs: { [k]: v } }).catch(() => {});
+  };
   // which way the list faces: its title, buttons and grip sit toward the middle of the screen. Auto = the half it sits in
   const faces = () => P.faces;
   // Size: the whole list larger or smaller (text, pictures, buttons). The window grows and shrinks with it: its width by
@@ -145,6 +150,7 @@
   async function load() {
     try {
       [G, L] = await Promise.all([get("/api/gear"), get("/api/shopping").catch(() => null)]);
+      takePrefs(G.prefs, G.prefsSet);
       render();
     } catch (e) {
       G = L = null;
@@ -161,6 +167,7 @@
       if (typing || drag || settingsOpen) { quietLoad(); return; }
       const top = $("list").scrollTop;
       try { [G, L] = await Promise.all([get("/api/gear"), get("/api/shopping").catch(() => L)]); } catch { return; }
+      takePrefs(G.prefs, G.prefsSet);
       render();
       $("list").scrollTop = top;
     }, 400);
@@ -168,7 +175,7 @@
   async function change(c) {
     try {
       const r = await post("/api/shop", c);
-      if (c.plan || c.goal_all != null || c.refresh || c.currency || c.class || c.auto_sync != null || c.use_inventory != null) [G, L] = await Promise.all([get("/api/gear"), get("/api/shopping").catch(() => null)]);
+      if (c.plan || c.goal_all != null || c.refresh || c.currency || c.class || c.auto_sync != null || c.use_inventory != null) { [G, L] = await Promise.all([get("/api/gear"), get("/api/shopping").catch(() => null)]); takePrefs(G.prefs, G.prefsSet); }
       else L = r;
       render();
     } catch (e) {
@@ -193,7 +200,6 @@
   function render() {
     hideTip(); // the bar under the mouse is about to be redrawn
     if (!G) return message("offline");
-    takePrefs(G.prefs, G.prefsSet);
     if (folded) view = "steps";
     $("mini").hidden = !folded;
     // who: the official site's read of the character when there is one, else what the game said at login
@@ -659,6 +665,8 @@
       }
       // a read fetched before the app kept them still has the defaults there
       for (const k of Object.keys(moved)) if (!set.includes(k)) next[k] = moved[k];
+      // and one fetched before a change made here, the value before it
+      for (const k of Object.keys(mineAt)) if (Date.now() - mineAt[k] < 4000) next[k] = P[k];
     }
     for (const k of Object.keys(STORE)) if (next[k] !== undefined) keep(k, next[k]);
     if (next.panel !== P.panel) setPanel(next.panel);

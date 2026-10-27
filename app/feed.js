@@ -146,7 +146,7 @@ class Feed {
     this.sock = null;
     if (!this.state.startsWith('refused')) this.state = 'disconnected';
     this.core = null; this.game = false; this.capturing = false; this.source = null; this.exchange = null;
-    this.sentText = null; // the next core hears every setting again
+    this.sentText = null; this.granted = []; // the next core grants again, and hears every setting again
   }
 
   /* A note for the player: the hub lists it, the dock lights the icon up with the picture. `icon` is this app's own
