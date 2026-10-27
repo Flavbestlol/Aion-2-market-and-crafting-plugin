@@ -25,19 +25,20 @@ const recipes = [
   lucky('r-b3', B3, [ing(A2, 1), ing(STONE, 4)], A3),
   ...G.map((id, i) => ({ id: 'r-g' + (i + 1), itemId: String(id), profession: 'Tailoring', requiredMastery: 1, outputQuantity: 1, successVerified: true, successProbability: '1',
     client: { recipeKey: `Recipe_Tailoring_L_ar_Gloves_Unique_0${i === 0 ? '01' : 10 + i}` },
-    ingredients: [i === 0 ? ing(A3, 1, 'Equip') : ing(G[i - 1], 1, 'Equip'), ing(STONE, 10)] })),
+    ingredients: [ing(A3, 1, 'Equip'), ing(STONE, 10)] })), // every tier takes an Artisan's piece and stone
 ];
 
-function world({ prices = {}, bag = [], shop = {} } = {}) {
+function world({ prices = {}, bag = [], shop = {}, plan = { Gloves: { have: 0, goal: 1 } }, piece = false } = {}) {
   const now = Date.now();
   const quote = price => ({ status: 'current', price, currency: 'Kinah', marketKind: 'items', observedAt: new Date(now).toISOString(), delaySeconds: 0, listings: 10 });
   const quotes = new Map(Object.entries({ [LEATHER]: 1000, [STONE]: 100, ...prices }).map(([id, p]) => [String(id), quote(p)]));
   const data = { catalogue: { items, recipes }, quotes, hist: new Map(), chests: {}, fetchedAt: now };
-  const settings = { faction: 'elyos', class: 'Ranger', plan: { Gloves: { have: 0, goal: 1 } }, proficiency: {}, currency: 'USD', quna_pack: { quna: 4000, eur: 44.49 },
+  const settings = { faction: 'elyos', class: 'Ranger', plan, proficiency: {}, currency: 'USD', quna_pack: { quna: 4000, eur: 44.49 },
     shop: { sel: ['Gloves'], ticks: {}, use_inventory: true, kina_have: 0, quna_have: 0, ...shop }, cheap_when_below_usual_percent: 5, expensive_when_above_usual_percent: 5 };
   const inv = new Inventory(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'flav-owned-')), 'inventory.json'));
   inv.take({ type: 'inventory', kind: 'list', at: Math.floor(now / 1000), stacks: bag.map(([item, count], i) => ({ item, count, container: 'bag', slot: i + 1 })) });
-  return C.shopping(data, settings, null, inv).chosen[0].steps;
+  const out = C.shopping(data, settings, null, inv);
+  return piece ? { ...out.chosen[0], buy: out.buy } : out.chosen[0].steps;
 }
 const stepOf = (steps, id) => steps.find(s => s.id === String(id));
 const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-6, `${msg}: ${a} vs ${b}`);
@@ -138,4 +139,22 @@ test("crafting the Artisan's piece already cheaper: crafted, and nothing to choo
   assert.ok(stepOf(steps, A1));
   const c = steps.find(s => s.tier === 1).artisanChoice;
   assert.deepEqual([c.crafting, c.mine], [true, false]);
+});
+
+test('where a piece stops: only the tiers from the one owned to the stop are bought and crafted', () => {
+  // nothing owned, stop at T2: T1 and T2 are made, nothing past T2
+  let p = world({ plan: { Gloves: { have: 0, goal: 2 } }, piece: true });
+  assert.deepEqual([p.have, p.goal], [0, 2]);
+  assert.ok(stepOf(p.steps, G[0]) && stepOf(p.steps, G[1]), 'T1 and T2 are steps');
+  assert.equal(stepOf(p.steps, G[2]), undefined, 'nothing past the stop');
+  near(p.buy.find(x => x.id === String(STONE)).qty, 2 * 10 + 2 * (16 * 2 + 4 * 4), "stone: 10 a tier, and 16 tries of 2 plus 4 tries of 4 for each of the two Artisan's pieces");
+  // T1 owned, stop at T3: T2 and T3 only
+  p = world({ plan: { Gloves: { have: 1, goal: 3 } }, piece: true });
+  assert.deepEqual([p.have, p.goal], [1, 3]);
+  assert.equal(stepOf(p.steps, G[0]), undefined, 'T1 is owned');
+  assert.ok(stepOf(p.steps, G[1]) && stepOf(p.steps, G[2]), 'T2 and T3 are steps');
+  assert.equal(stepOf(p.steps, G[3]), undefined, 'nothing past T3');
+  // stop at T1 again: the same as the plan the other tests use
+  p = world({ plan: { Gloves: { have: 0, goal: 1 } }, piece: true });
+  assert.ok(stepOf(p.steps, G[0]) && !stepOf(p.steps, G[1]));
 });

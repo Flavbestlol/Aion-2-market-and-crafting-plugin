@@ -31,6 +31,7 @@
   let L = null; // shopping list for the pieces chosen
   let view = localStorage.getItem("shop-view") || "gear";
   let settingsOpen = false; // the ⚙ panel
+  let barSets = "stop"; // what a click on a gear bar sets: where the piece stops ("stop") or the tier owned ("own")
   const opened = new Set(); // steps opened for their details
   let folded = localStorage.getItem("shop-folded") === "1";
   document.body.classList.toggle("folded", folded);
@@ -150,7 +151,7 @@
   async function change(c) {
     try {
       const r = await post("/api/shop", c);
-      if (c.plan || c.refresh || c.currency || c.class || c.auto_sync != null || c.use_inventory != null) [G, L] = await Promise.all([get("/api/gear"), get("/api/shopping").catch(() => null)]);
+      if (c.plan || c.goal_all != null || c.refresh || c.currency || c.class || c.auto_sync != null || c.use_inventory != null) [G, L] = await Promise.all([get("/api/gear"), get("/api/shopping").catch(() => null)]);
       else L = r;
       render();
     } catch (e) {
@@ -202,6 +203,7 @@
       $("chips").replaceChildren();
       const titles = { weapon: "Weapons", armor: "Armor", accessory: "Accessories" };
       let last = null;
+      if (G.slots.length) rows.push(goalBar());
       for (const s of G.slots) {
         if (s.group !== last) { last = s.group; rows.push(h("div", { class: "group", text: titles[last] })); }
         rows.push(gearRow(s));
@@ -302,14 +304,32 @@
     scheduleFit();
   }
 
+  // Where the plan stops: one tier for every piece ("All gear to T2"), or each piece its own (a click on its bars), and
+  // what a click on a bar sets: where that piece stops (the usual: what you own comes from the game) or what you own.
+  function goalBar() {
+    const same = G.slots.every((s) => s.goal === G.slots[0].goal) ? G.slots[0].goal : null;
+    const mode = (v, t, tip) => h("button", { type: "button", class: barSets === v ? "on" : "", title: tip, text: t, onclick: () => { if (barSets !== v) { barSets = v; render(); } } });
+    return h("div", { class: "goals" },
+      h("div", { class: "gl" }, h("b", { text: "All gear to" }),
+        h("div", { class: "seg" }, ...[1, 2, 3, 4, 5, 6].map((t) => h("button", { type: "button", class: same === t ? "on" : "", text: `T${t}`,
+          title: `Every piece stops at T${t}: what to buy and craft is only what takes it from the tier you own to T${t}. A piece you already own at T${t} or above has nothing to craft`,
+          onclick: () => { if (same !== t) change({ goal_all: t }); } })))),
+      h("div", { class: "gl sub" }, h("small", { text: same ? "or one piece at a time: a click on its bars" : "each piece stops where its gold bars end" }),
+        h("div", { class: "seg sm" }, mode("stop", "Stop here", "A click on a bar sets where that piece stops"), mode("own", "I own", "A click on a bar sets the tier you own (the game sets it by itself when Flav-Toolkit reads it)"))));
+  }
+
   // One gear slot: the tier bars, what you wear, where the tier came from (your gear or set by you), the cost.
   function gearRow(s) {
     const done = s.kind === "done";
     const bars = s.tiers.map((t) => {
-      const el = h("i", { class: `${t.tier <= s.have ? "own" : t.tier <= s.goal && !s.skip ? "go" : ""}${t.tier === s.worn ? " worn" : ""}` });
+      const el = h("i", { class: `${t.tier <= s.have ? "own" : t.tier <= s.goal && !s.skip ? "go" : ""}${t.tier === s.worn ? " worn" : ""}${t.tier === s.goal && s.goal < 6 ? " stop" : ""}` });
       el.addEventListener("mouseenter", () => showTip(el, s, t));
       el.addEventListener("mouseleave", hideTip);
-      el.addEventListener("click", (e) => { e.stopPropagation(); hideTip(); change({ plan: { slot: s.slot, have: s.have === t.tier ? t.tier - 1 : t.tier } }); });
+      el.addEventListener("click", (e) => {
+        e.stopPropagation(); hideTip();
+        if (barSets === "stop") { if (t.tier !== s.goal) change({ plan: { slot: s.slot, goal: t.tier } }); }
+        else change({ plan: { slot: s.slot, have: s.have === t.tier ? t.tier - 1 : t.tier } });
+      });
       return el;
     });
     let src = null;
@@ -326,8 +346,8 @@
     return h("div", { class: `gear${done ? " done" : ""}${L?.sel?.includes(s.slot) ? " sel" : ""}`, title: "Pick it for the shopping list",
       onclick: () => { view = "buy"; localStorage.setItem("shop-view", view); change({ sel: [s.slot] }); } },
       pic(s.icon),
-      h("div", { class: "mid" }, h("div", { class: "nm" }, h("span", { text: s.label, style: "color:var(--ink);font:inherit;margin:0" }), h("span", { text: `T${s.have} → T${s.goal}` })), h("div", { class: "bars" }, ...bars), wear),
-      h("div", { class: "rt" }, done ? h("span", { class: "v done", text: "Done" }) : h("div", {}, ...kina(s.kina)),
+      h("div", { class: "mid" }, h("div", { class: "nm" }, h("span", { text: s.label, style: "color:var(--ink);font:inherit;margin:0" }), h("span", { text: s.have >= s.goal ? `T${s.have} · stops at T${s.goal}` : `T${s.have} → T${s.goal}` })), h("div", { class: "bars" }, ...bars), wear),
+      h("div", { class: "rt" }, done ? h("span", { class: "v done", text: s.have < s.goal ? "Left out" : s.goal >= 6 ? "Done" : s.have > s.goal ? `Past T${s.goal}` : `At T${s.goal}` }) : h("div", {}, ...kina(s.kina)),
         done ? null : h("small", { class: "usd blk", text: cash(s.money, 0) }),
         done ? null : h("span", { class: `v ${s.kind}`, text: s.pct == null ? LABEL[s.kind] : `${LABEL[s.kind]} ${s.pct > 0 ? "+" : ""}${fmt(s.pct, 1)}%` })));
   }
@@ -860,8 +880,10 @@
 
   // ---- the bar tooltip ----------------------------------------------------
   function showTip(bar, s, t) {
-    const state = t.tier <= s.have ? ["own", "You own this"] : t.tier <= s.goal && !s.skip ? ["go", "To craft"] : ["out", "Past your goal"];
-    const click = s.have === t.tier ? `Click: you own up to ${t.tier > 1 ? `T${t.tier - 1}` : "nothing"}` : `Click: I own up to T${t.tier}`;
+    const state = t.tier <= s.have ? ["own", "You own this"] : t.tier <= s.goal && !s.skip ? ["go", "To craft"] : ["out", "Past where it stops"];
+    const click = barSets === "stop"
+      ? (t.tier === s.goal ? `It stops here${t.tier <= s.have ? ": you own it, nothing to craft" : ""}` : `Click: stop at T${t.tier}${t.tier <= s.have ? " (you own it: nothing to craft)" : s.have + 1 === t.tier ? ` (craft T${t.tier})` : ` (craft T${s.have + 1} → T${t.tier})`}`)
+      : s.have === t.tier ? `Click: you own up to ${t.tier > 1 ? `T${t.tier - 1}` : "nothing"}` : `Click: I own up to T${t.tier}`;
     const tip = $("tip");
     tip.replaceChildren(
       h("div", { class: "th" }, pic(t.icon, "pic sm"), h("div", {}, h("div", { class: "tn", text: `Tier ${t.tier} · ${TIER[t.tier]}` }), h("div", { class: "tt", text: t.name }))),

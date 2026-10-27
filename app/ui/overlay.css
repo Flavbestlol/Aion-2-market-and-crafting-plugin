@@ -177,6 +177,15 @@ small.pre { margin: 0 1px 0 0 !important; font-size: 0.72em !important; color: v
 .bars i.hl { filter: brightness(1.4); }
 /* the tier you wear: a small green notch under its bar */
 .bars i.worn { position: relative; }
+.bars i.stop { position: relative; }
+.bars i.stop::before { content: ""; position: absolute; right: -2px; top: -4px; width: 2px; height: 14px; border-radius: 1px; background: var(--gold-hi); box-shadow: 0 0 6px rgba(242, 195, 91, 0.8); }
+.goals { margin: 2px 0 6px; padding: 8px 8px 7px; border-radius: 12px; background: var(--well); box-shadow: inset 0 0 0 1px rgba(242, 195, 91, 0.14); }
+.goals .gl { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.goals .gl b { font: 600 13px var(--num); color: var(--ink); white-space: nowrap; }
+.goals .gl.sub { margin-top: 6px; }
+.goals .gl small { font-size: 10.5px; color: var(--mute); line-height: 1.25; }
+.goals .seg button { padding: 4px 7px; }
+.goals .seg.sm button { padding: 3px 7px; font-size: 10.5px; white-space: nowrap; }
 .bars i.worn::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 5px; height: 3px; transform: translateX(-50%); border-radius: 2px; background: var(--done); box-shadow: 0 0 5px rgba(111, 227, 161, 0.7); }
 .wear { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; margin-top: 2px; }
 .wear > span:not(.src) { overflow: hidden; text-overflow: ellipsis; }
