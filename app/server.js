@@ -408,7 +408,7 @@ const server = http.createServer(async (req, res) => {
         if (body.clear) sh.ticks = {};
         if (body.show) { overlaySeq++; showList(true); tell('sent', overlaySeq); }
         // the plan from the overlay's Gear tab: one piece's tier owned or where it stops, or every piece to one tier
-        if (body.plan && typeof body.plan === 'object') Slots.changePlan(settings.plan, settings.class, { slot: body.plan.slot, have: body.plan.have, goal: body.plan.goal });
+        if (body.plan && typeof body.plan === 'object') Slots.changePlan(settings.plan, settings.class, { slot: body.plan.slot, have: body.plan.have, goal: body.plan.goal, skip: body.plan.skip });
         if (body.goal_all != null) Slots.changePlan(settings.plan, settings.class, { goalAll: body.goal_all });
         if (body.refresh && !busy) refresh({});
         // from the overlay's ⚙: the currency and reading the gear on its own (same checks as /api/settings)
