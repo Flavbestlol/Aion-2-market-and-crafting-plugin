@@ -105,7 +105,7 @@ The add-on also has a full page at `http://127.0.0.1:7317` (only on your PC), fo
 2. It hands that to its add-ons over a local feed. **Dragon Gear Prices** is a small local app (Node.js) that works out the cheapest way to each tier and keeps your plan, your ticks and your alerts.
 3. The **overlay** is the app's own page, shown over the game by Flav-Toolkit, which also starts and stops the app for you. Its keys (show or hide: Ctrl+Alt+M; refresh prices: Ctrl+R) are held by Flav-Toolkit and changed in its hub.
 
-When the game isn't being read, prices come from [a2-tracker.com](https://a2-tracker.com)'s public data (hourly), and your gear from the official AION 2 site.
+When the game isn't being read, prices come from [a2-tracker.com](https://a2-tracker.com)'s public data (hourly), and your gear from the official AION 2 site. If a2-tracker refuses the add-on (since 2026-10-30 it answers *access restricted*), Dragon Gear doesn't ask it again for six hours and prices from the Market in game alone; the list says so.
 
 ## Install
 

@@ -34,7 +34,8 @@ let data = null, report = null, busy = null, lastError = null, lastRefresh = 0, 
 const cash = (v, m, d) => { if (v == null || !isFinite(v)) return '—'; const n = Number(v).toLocaleString('en-US', { minimumFractionDigits: d ?? (Math.abs(v) < 100 ? 2 : 0), maximumFractionDigits: d ?? (Math.abs(v) < 100 ? 2 : 0) }); return m.before ? m.sym + n : n + ' ' + m.sym; };
 const curOf = m => ({ code: m.code, sym: m.sym, before: m.before });
 
-const logErr = e => { lastError = e.message || String(e); try { if (fs.existsSync(ERR) && fs.statSync(ERR).size > 1e6) fs.renameSync(ERR, ERR + '.old'); fs.appendFileSync(ERR, new Date().toISOString() + ' ' + lastError + '\n'); } catch { /* ignore */ } };
+const logLine = msg => { try { if (fs.existsSync(ERR) && fs.statSync(ERR).size > 1e6) fs.renameSync(ERR, ERR + '.old'); fs.appendFileSync(ERR, new Date().toISOString() + ' ' + msg + '\n'); } catch { /* ignore */ } };
+const logErr = e => { lastError = e.message || String(e); logLine(lastError); };
 
 async function refresh({ force = false, quiet = false } = {}) {
   if (busy) return;
@@ -42,7 +43,10 @@ async function refresh({ force = false, quiet = false } = {}) {
   const auto = !!quiet;
   busy = { step: 'Starting', done: 0, total: 1, auto }; lastError = null;
   try {
+    const before = data && data.tracker ? data.tracker.state : 'ok';
     data = await C.fetchAll(settings, (step, done, total) => { busy = { step, done, total, auto }; }, { force });
+    // a2-tracker saying no is written down once, when it starts, not on every refresh
+    if (data.tracker.state !== before && data.tracker.state !== 'ok') logLine('a2-tracker ' + data.tracker.state + (data.tracker.why ? ': ' + data.tracker.why : '') + '; prices come from the Exchange in game only');
     crafting.learn(data.catalogue);
     // the worn gear: from the game's login list when it has been seen; the official site only when it hasn't and the
     // game isn't being read now (then the next login brings the list)
@@ -253,6 +257,7 @@ function shoppingNow() {
   out.alerts = alerts.list(); out.alertsRecent = alerts.recent;
   // whether the Exchange can be read now: Flav-Toolkit running, the game read, its Exchange seen (for the warning)
   out.feed = feed.info();
+  out.tracker = data.tracker || { state: 'ok' }; // a2-tracker's hourly prices: 'ok', 'refused' (since…), 'unreachable'
   const m = FX.money(settings, C.DATA), rate = report && report.rate.qunaPer10m;
   const series = (report && report.qunaSeries || []).filter(x => x != null).sort((a, b) => a - b);
   const usual = series.length > 24 ? series[series.length >> 1] : null;
