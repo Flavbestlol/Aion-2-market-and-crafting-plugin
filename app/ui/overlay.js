@@ -530,15 +530,19 @@
   // A highlighted warning above the Buy and Steps tabs when the prices are not the Exchange's own right now: what is
   // missing (Flav-Toolkit, the game started through it, the Exchange opened) and what to do.
   function priceWarning() {
-    const m = L && L.market, f = L && L.feed;
+    const m = L && L.market, f = L && L.feed, t = L && L.tracker;
+    // a2-tracker's hourly prices: gone while it refuses the app (or can't be reached), so the Exchange is the only source
+    const noHourly = !!(t && t.state && t.state !== "ok");
+    const hourlyGone = t && t.state === "refused" ? `a2-tracker refuses Dragon Gear${t.since ? ` since ${new Date(t.since).toLocaleDateString()}` : ""}: no hourly prices` : "a2-tracker can't be reached: no hourly prices";
     if (m && m.live) return m.ageMin != null && m.ageMin > 30 ? h("div", { class: "pwarn soft" }, h("b", { text: "Exchange seen " + m.ageMin + " min ago" }), h("span", { text: " · open the Exchange in game to refresh before you buy" })) : null;
     const soft = (bold, rest) => h("div", { class: "pwarn soft" }, h("b", { text: bold }), h("span", { text: rest }));
     let what, todo;
     if (!f || f.state !== "connected") { what = "Flav-Toolkit isn't running"; todo = "Start it, then Play AION 2 from its tray to read the Exchange's own prices."; }
     // Flav-Toolkit 0.12.0 says whether it reads the Exchange: started with Play AION 2 and nothing seen yet is not a fault
-    else if (f.exchange === "ready" || f.exchange === "live") return soft("Open the Exchange in game", " to read its own prices · hourly prices meanwhile");
+    else if (f.exchange === "ready" || f.exchange === "live") return soft("Open the Exchange in game", ` to read its own prices · ${noHourly ? hourlyGone : "hourly prices meanwhile"}`);
     else if (f.exchange === "off") { what = "The Exchange can't be read"; todo = "AION 2 wasn't started through Flav-Toolkit: quit the game and start it with Play AION 2 in the tray, then open the Exchange."; }
     else if (f.game) { what = "The Exchange can't be read"; todo = "AION 2 wasn't started through Flav-Toolkit: quit the game and start it with Play AION 2 in the tray, then open the Exchange."; }
+    else if (noHourly) { what = "No prices right now"; todo = `${hourlyGone}. Start AION 2 with Play AION 2 in Flav-Toolkit and open the Exchange: its own prices come in by themselves.`; }
     else { what = "Prices are a2-tracker's hourly ones"; todo = "Start AION 2 with Play AION 2 in Flav-Toolkit's tray and open the Exchange for its own prices before you buy."; }
     return h("div", { class: "pwarn" }, h("div", { class: "pw1" }, h("span", { class: "ico", text: "!" }), b(what)), h("div", { class: "pw2", text: todo }));
   }

@@ -85,7 +85,10 @@ Prices: the Exchange itself while you play, a2-tracker.com's public data otherwi
   from the moment the Exchange opens; an item whose list you opened is priced from its real
   ladder, the cheapest listings that cover the quantity ("exact"). Older than 45 minutes is
   ignored and a2-tracker's hourly prices take over. What was seen is kept in data\market.json
-  (item ids, prices, quantities; nothing about you or other players). Flav-Toolkit never sends
+  (item ids, prices, quantities; nothing about you or other players).
+  When a2-tracker.com refuses the app (it has answered "access restricted" since 2026-10-30), the
+  app doesn't ask it again for 6 hours and prices from the Exchange alone; the list says so.
+  Flav-Toolkit never sends
   anything to the game or the Exchange: see its docs\SECURITY.md.
   Test the reader on its own: Flav-Toolkit\bin\flav.exe market --live --keys <key file>.
 Money: 4,000 Quna = 44.49 EUR (fixed); USD and SAR at today's rate.

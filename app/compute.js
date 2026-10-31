@@ -5,11 +5,13 @@ const { createEngine } = require('./engine');
 const FX = require('./fx');
 
 const ROOT = path.resolve(__dirname, '..');
-const DATA = path.join(ROOT, 'data');
+const DATA = process.env.DRAGON_GEAR_DATA ? path.resolve(process.env.DRAGON_GEAR_DATA) : path.join(ROOT, 'data'); // the tests point it at a temporary folder
 const HIST = path.join(DATA, 'history');
 const ICONS = path.join(DATA, 'icons');
 const SETTINGS = path.join(ROOT, 'settings.json');
 const SITE = 'https://a2-tracker.com';
+const TRACKER = path.join(DATA, 'tracker.json'); // when a2-tracker last refused the app, so it stops asking for a while
+const REFUSED_WAIT = 6 * 3600000; // after a refusal (HTTP 401/403), a2-tracker is not asked again for this long
 const CHESTS = { '516130001': 10000000, '516140001': 2000000, '516150001': 400000 };
 for (const d of [DATA, HIST, ICONS]) fs.mkdirSync(d, { recursive: true });
 
@@ -80,17 +82,35 @@ async function getJSON(url, tries = 4) {
       const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 60000);
       const res = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': 'FlavGearPrices/2.0 (personal price checker)', Accept: 'application/json' } });
       clearTimeout(t);
+      if (res.status === 401 || res.status === 403) {
+        // a refusal is the site's decision: never asked again at once, never worked around
+        let why = '';
+        try { const b = await res.json(); if (b && typeof b.error === 'string') why = ' ' + b.error.slice(0, 40); } catch { /* no body */ }
+        const e = new Error('HTTP ' + res.status + why); e.refused = true; throw e;
+      }
       if (res.status === 429 || res.status >= 500) throw new Error('HTTP ' + res.status);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const body = await res.json();
       if (!body || body.ok !== true) throw new Error('unexpected answer');
       return body;
     } catch (e) {
-      if (i >= tries) throw new Error('Could not load ' + url.replace(SITE, '') + ': ' + e.message);
+      if (e.refused || i >= tries) { const err = new Error('Could not load ' + url.replace(SITE, '') + ': ' + e.message); err.refused = !!e.refused; throw err; }
       await sleep(wait); wait *= 2;
     }
   }
 }
+/* a2-tracker's answer to the app: 'ok', 'refused' (it said no: HTTP 401/403; not asked again for REFUSED_WAIT) or
+   'unreachable' (no answer). `since`: the first refusal of this run of refusals. Kept in data\tracker.json. */
+const Tracker = {
+  read() { try { const t = JSON.parse(fs.readFileSync(TRACKER, 'utf8')); return t && typeof t === 'object' ? t : {}; } catch { return {}; } },
+  // the refusal still in force, or null
+  refusedNow(now = Date.now()) { const t = Tracker.read(), at = Date.parse(t.refusedAt); return Number.isFinite(at) && now - at < REFUSED_WAIT ? t : null; },
+  refused(why, now = Date.now()) {
+    const t = Tracker.read(), iso = new Date(now).toISOString();
+    try { fs.writeFileSync(TRACKER, JSON.stringify({ refusedAt: iso, since: t.since || iso, why: String(why).slice(0, 120) })); } catch { /* next time */ }
+  },
+  ok() { try { fs.rmSync(TRACKER, { force: true }); } catch { /* fine */ } },
+};
 const ageMin = f => (fs.existsSync(f) ? (Date.now() - fs.statSync(f).mtimeMs) / 60000 : Infinity);
 
 function isCurrent(q, now) {
@@ -122,8 +142,13 @@ function priceAt(series, t) { for (let k = 0; k <= 6; k++) { const v = series.ge
 async function fetchAll(settings, progress, { force = false } = {}) {
   const now = Date.now();
   const catFile = path.join(DATA, 'catalogue.json');
+  // a2-tracker refused the app a while ago: not asked again until REFUSED_WAIT has passed (the Exchange still prices)
+  const off = Tracker.refusedNow(now);
+  let tracker = off ? { state: 'refused', since: off.since, why: off.why } : { state: 'ok' };
+  const noted = e => { if (e.refused) { Tracker.refused(e.message, now); const t = Tracker.read(); tracker = { state: 'refused', since: t.since, why: t.why }; } else if (tracker.state === 'ok') tracker = { state: 'unreachable', why: e.message }; };
   let catalogue;
-  if (!force && ageMin(catFile) < 24 * 60) catalogue = JSON.parse(fs.readFileSync(catFile, 'utf8'));
+  if (off && !fs.existsSync(catFile)) throw new Error('The recipe list comes from a2-tracker.com, which refuses Dragon Gear Prices right now (' + off.why + '). Try again later.');
+  if (off || (!force && ageMin(catFile) < 24 * 60)) catalogue = JSON.parse(fs.readFileSync(catFile, 'utf8'));
   else {
     progress('Recipe list', 0, 1);
     try {
@@ -131,15 +156,26 @@ async function fetchAll(settings, progress, { force = false } = {}) {
       if (!Array.isArray(catalogue.recipes) || !catalogue.items) throw new Error('recipe list looks wrong');
       fs.writeFileSync(catFile, JSON.stringify(catalogue));
     } catch (e) {
+      if (e.refused) noted(e);
       if (!fs.existsSync(catFile)) throw e;
       catalogue = JSON.parse(fs.readFileSync(catFile, 'utf8'));
     }
   }
   progress('Market prices', 0, 1);
   await FX.update(DATA);
-  const quotesBody = await getJSON(SITE + '/api.crafting.ashx?quotes=1&server=' + settings.server);
+  // a2-tracker's hourly quotes. Without them the app still prices from the Exchange as the game showed it
+  let quotesBody = null;
+  if (tracker.state === 'ok') {
+    try {
+      quotesBody = await getJSON(SITE + '/api.crafting.ashx?quotes=1&server=' + settings.server);
+      if (!Array.isArray(quotesBody.quotes)) throw new Error('quotes look wrong');
+      Tracker.ok();
+    } catch (e) { quotesBody = null; noted(e); }
+  }
+  if (!quotesBody) quotesBody = { ok: true, quotes: [], asOf: null };
+  const asked = tracker.state === 'ok'; // a2-tracker answered: its chests and histories are worth asking for
   const chests = {};
-  for (const id of Object.keys(CHESTS)) {
+  for (const id of asked ? Object.keys(CHESTS) : []) {
     try {
       const b = await getJSON(SITE + '/api.serverprices.ashx?item=' + id + '&server=' + settings.server + '&compare=');
       const p = (b.prices || []).find(x => String(x.serverId) === String(settings.server));
@@ -154,20 +190,23 @@ async function fetchAll(settings, progress, { force = false } = {}) {
   for (const c of engine.chains(null)) engine.climb(c, snap);
   // the items the plan reads, the Kina Chests, and the items the player set alerts on (their "usual" price needs a history)
   const ids = [...new Set([...[...read].filter(id => quotes.has(id)), ...Object.keys(CHESTS), ...(settings.alerts_list || []).map(a => String(a.item)).filter(id => quotes.has(id))])];
-  const todo = ids.filter(id => force || ageMin(path.join(HIST, id + '.json')) >= 55);
+  const todo = asked ? ids.filter(id => force || ageMin(path.join(HIST, id + '.json')) >= 55) : [];
   let done = 0;
   const worker = async () => {
     while (todo.length) {
       const id = todo.shift();
-      try { fs.writeFileSync(path.join(HIST, id + '.json'), JSON.stringify(await getJSON(SITE + '/api.history.ashx?item=' + id + '&server=' + settings.server + '&days=' + settings.history_days))); } catch { /* keep old copy */ }
+      if (tracker.state !== 'ok') { todo.length = 0; break; } // refused meanwhile: ask nothing more
+      try { fs.writeFileSync(path.join(HIST, id + '.json'), JSON.stringify(await getJSON(SITE + '/api.history.ashx?item=' + id + '&server=' + settings.server + '&days=' + settings.history_days))); } catch (e) { if (e.refused) noted(e); /* keep old copy */ }
       done++; progress('Price history', done, done + todo.length);
       await sleep(250);
     }
   };
   if (todo.length) { progress('Price history', 0, todo.length); await Promise.all([worker(), worker(), worker()]); }
   const hist = new Map();
-  for (const id of ids) { const f = path.join(HIST, id + '.json'); if (fs.existsSync(f)) { try { hist.set(id, hourlySeries(JSON.parse(fs.readFileSync(f, 'utf8')))); } catch { /* skip */ } } }
-  return { fetchedAt: now, catalogue, quotesBody, quotes, chests, hist };
+  // the histories already on disk count too, for every item the plan reads, when a2-tracker no longer sends quotes
+  const kept = asked ? ids : [...new Set([...ids, ...read, ...(settings.alerts_list || []).map(a => String(a.item))])];
+  for (const id of kept) { const f = path.join(HIST, id + '.json'); if (fs.existsSync(f)) { try { hist.set(id, hourlySeries(JSON.parse(fs.readFileSync(f, 'utf8')))); } catch { /* skip */ } } }
+  return { fetchedAt: now, catalogue, quotesBody, quotes, chests, hist, tracker };
 }
 
 /* Where a price comes from: the Exchange as the game saw it (`market`, while fresh), else a2-tracker's hourly quotes. */
@@ -807,4 +846,4 @@ function tickStep(ticks, key, order) {
   else for (const k of order.slice(0, i + 1)) ticks[k] = 1;
 }
 
-module.exports = { kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, gearFromGame, WORN_SLOT, shopping, stepKeys, tickStep, pickListings, ROOT, DATA, PROFESSIONS, XP_TOTAL };
+module.exports = { Tracker, kinaPlan, loadSettings, saveSettings, fetchAll, computeState, leveling, iconFile, applySync, gearFromGame, WORN_SLOT, shopping, stepKeys, tickStep, pickListings, ROOT, DATA, PROFESSIONS, XP_TOTAL };
