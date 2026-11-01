@@ -17,7 +17,7 @@ function feed(opts = {}) {
 }
 
 test('hello asks for the lock, the keys and the settings in the hub', () => {
-  assert.deepStrictEqual(FEATURES, ['lock', 'hotkeys', 'settings']);
+  assert.deepStrictEqual(FEATURES, ['lock', 'hotkeys', 'settings', 'help']);
   const src = fs.readFileSync(path.join(__dirname, '..', 'feed.js'), 'utf8');
   assert.match(src, /op: 'hello'[^\n]*features: FEATURES/);
 });
@@ -125,5 +125,16 @@ test('a setting changed in the hub reaches the app only when settings were grant
   f.take(JSON.stringify({ op: 'setting', key: 7, value: true }));
   f.take(JSON.stringify({ op: 'setting', key: 'x'.repeat(41), value: true }));
   assert.deepStrictEqual(got, [['alerts', true]]);
+  f.close();
+});
+
+test('"Find out why" asks the hub for the Exchange checks only when help was granted', () => {
+  const { f, sent } = feed();
+  assert.strictEqual(f.help('exchange'), false, 'not granted: nothing sent');
+  f.take(JSON.stringify({ op: 'welcome', core: 'x', events: 1, features: ['help'] }));
+  sent.length = 0;
+  assert.strictEqual(f.help('exchange'), true);
+  assert.strictEqual(f.help('anything else'), true);
+  assert.deepStrictEqual(sent, [{ op: 'help', about: 'exchange' }, { op: 'help' }]);
   f.close();
 });

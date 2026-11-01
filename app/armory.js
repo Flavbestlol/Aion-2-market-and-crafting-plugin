@@ -10,7 +10,7 @@ const INFO = 'https://aion2.plaync.com/api/character/info';
 const EQUIPMENT = 'https://aion2.plaync.com/api/character/equipment';
 const GAP = 1000, KEEP = 600000, HOLD = 600000;
 // Says who is asking, honestly. No Origin or Referer: the add-on is not the official site's own page.
-const HEADERS = { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://github.com/Flavbestlol/flav-toolkit)', Accept: 'application/json' };
+const HEADERS = { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://flavbestlol.github.io/flav-toolkit/)', Accept: 'application/json' };
 
 let last = 0, heldUntil = 0;
 const cache = new Map();

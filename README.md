@@ -5,7 +5,7 @@
 <p align="center">
   <img alt="Version 0.16.3" src="https://img.shields.io/badge/version-0.16.3-f2c35b?style=for-the-badge">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-1f6fd6?style=for-the-badge">
-  <a href="https://github.com/Flavbestlol/flav-toolkit"><img alt="A Flav-Toolkit add-on" src="https://img.shields.io/badge/a%20Flav--Toolkit-add--on-ff8540?style=for-the-badge"></a>
+  <a href="https://flavbestlol.github.io/flav-toolkit/"><img alt="A Flav-Toolkit add-on" src="https://img.shields.io/badge/a%20Flav--Toolkit-add--on-ff8540?style=for-the-badge"></a>
   <img alt="Vibe coded" src="https://img.shields.io/badge/vibe-coded-6fe3a1?style=for-the-badge">
   <a href="https://ko-fi.com/flavbest"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white"></a>
 </p>
@@ -33,7 +33,7 @@
 
 ## What it does
 
-Dragon Gear Prices is an add-on for [Flav-Toolkit](https://github.com/Flavbestlol/flav-toolkit). Four tabs in one small panel that sits over AION 2: **Gear**, **Buy**, **Steps** and **Alerts**. Drag it anywhere; clicks beside it go to the game.
+Dragon Gear Prices is an add-on for [Flav-Toolkit](https://flavbestlol.github.io/flav-toolkit/). Four tabs in one small panel that sits over AION 2: **Gear**, **Buy**, **Steps** and **Alerts**. Drag it anywhere; clicks beside it go to the game.
 
 It keeps itself up to date: when you buy, craft or move something, or open an item on the Market in game, the panel redraws by itself (⚙ › *Update by itself*; nothing is downloaded and nothing is asked of the game). ⚙ › *Size* makes everything in it larger, from 90 % to 150 %.
 
@@ -109,7 +109,7 @@ When the game isn't being read, prices come from [a2-tracker.com](https://a2-tra
 
 ## Install
 
-You need **Windows 10 or 11** (64-bit), **AION 2**, and **[Flav-Toolkit](https://github.com/Flavbestlol/flav-toolkit)** 0.7.0 or later with [Npcap](https://npcap.com) (Flav-Toolkit's README says how).
+You need **Windows 10 or 11** (64-bit), **AION 2**, and **[Flav-Toolkit](https://flavbestlol.github.io/flav-toolkit/)** (install it from its download page; 0.19.0 or later gets its updates and the store from there) with [Npcap](https://npcap.com) (the download page says how).
 
 1. **Install it from the hub.** Open Flav-Toolkit's hub (double-click its tray icon), go to **Get add-ons** and click **Install** on *Dragon Gear Prices*. The hub downloads it from Flav-Toolkit's own signed catalogue, checks it, and starts it; it starts with Flav-Toolkit from then on. Everything it needs comes in the package, Node.js included.
 2. **Play.** Start AION 2 with **Play AION 2** in Flav-Toolkit (so the Market can be read), log in, and open the panel from the dock by the minimap.
@@ -134,7 +134,7 @@ In a copy from this repository, double-click `Dragon Gear Prices.bat`: it starts
 
 Here is exactly what it does:
 
-- **It reads, it never plays.** No packets to the game, no key presses, no reading the game's memory, no touching its files. What it knows about the game comes from Flav-Toolkit, which reads only what the game already sends to your PC. How Flav-Toolkit reads the Market, and what it may and may not do, is written down in its [`docs/SECURITY.md`](https://github.com/Flavbestlol/flav-toolkit/blob/main/docs/SECURITY.md).
+- **It reads, it never plays.** No packets to the game, no key presses, no reading the game's memory, no touching its files. What it knows about the game comes from Flav-Toolkit, which reads only what the game already sends to your PC. How Flav-Toolkit reads the Market, and what it may and may not do, is written down in its `docs/SECURITY.md`, in the source zip on its [download page](https://flavbestlol.github.io/flav-toolkit/).
 - **It runs on your PC only.** The app answers at `127.0.0.1:7317`, which nothing outside your PC can reach. Your plan, ticks, alerts and what was read from the game stay in its folder (`settings.json`, `data\`). Delete them any time.
 - **No account, no telemetry, no uploads.** The only sites it asks are the ones listed in `addon.json`: [a2-tracker.com](https://a2-tracker.com) (prices, recipes and item data), the official AION 2 site (`aion2.plaync.com`, `api-search.plaync.com`: your character's name and server, only when the game isn't being read), the game's icon server (`assets.playnccdn.com`), and `open.er-api.com` (today's exchange rate, for $/€/SAR). It asks them as itself, with its own name.
 - **One change outside its folder, only if you ask.** Turning on *hourly alerts* in the page adds a Windows task that starts the app hidden when you log in, so alerts keep working. Turning them off removes it.

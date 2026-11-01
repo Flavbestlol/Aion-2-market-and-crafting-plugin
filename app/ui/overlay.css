@@ -122,6 +122,8 @@ img { display: block; }
 .pwarn .pw2 { margin-top: 3px; font-size: 11px; color: var(--ink-2); line-height: 1.35; }
 .pwarn.soft { padding: 5px 10px; font-size: 11px; color: var(--ink-2); background: rgba(255, 154, 92, 0.1); box-shadow: inset 0 0 0 1px rgba(255, 154, 92, 0.35); }
 .pwarn.soft b { color: #ffd2b5; font: 600 11.5px var(--num); }
+.pwarn .pwhy { margin-left: auto; padding: 3px 10px; border: 0; border-radius: 999px; font: 600 11px var(--num); color: #1b1406; background: #ffb27f; cursor: pointer; flex: none; }
+.pwarn .pwhy:hover { background: #ffc79f; }
 /* what is in hand, said beside a count: "20 in hand" */
 .hv { display: inline-block; margin-left: 5px; padding: 0 5px; border-radius: 7px; font: 600 10px/14px var(--num); color: #9cd0ff; box-shadow: inset 0 0 0 1px rgba(127, 178, 255, 0.5); vertical-align: 1px; }
 .in .hv { margin-left: 3px; }

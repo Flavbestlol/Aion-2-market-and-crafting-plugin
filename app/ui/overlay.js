@@ -380,7 +380,7 @@
   const inventorySource = (inv) => (inv && inv.fresh ? [h("span", { text: " · " }), h("span", { class: "live", text: "bag read" }), h("span", { text: inv.kina != null ? ` · ${kfmt(inv.kina)} Kina` : "" })] : []);
   const priceSource = (m) => (m && m.live
     ? [h("span", { class: "live", text: "Exchange prices" }), h("span", { text: ` · seen ${m.ageMin == null || m.ageMin < 1 ? "just now" : `${m.ageMin} min ago`}${m.ladders ? ` · ${m.ladders} list${m.ladders === 1 ? "" : "s"} opened` : ""}` })]
-    : [h("span", { text: "a2-tracker prices (hourly) · start the game with Play in Flav-Toolkit for the Exchange's own" })]);
+    : [h("span", { text: L && L.tracker && L.tracker.state && L.tracker.state !== "ok" ? "no prices yet · open the Exchange in game (a2-tracker's hourly prices aren't available)" : "a2-tracker prices (hourly) · start the game with Play in Flav-Toolkit for the Exchange's own" })]);
   // "buy 935 in 3 stacks (328 + 367 + 240) ≤ 1,200 each": the whole listings that cover the quantity, cheapest first
   const planLine = (it) => {
     const p = it.plan;
@@ -544,7 +544,10 @@
     else if (f.game) { what = "The Exchange can't be read"; todo = "AION 2 wasn't started through Flav-Toolkit: quit the game and start it with Play AION 2 in the tray, then open the Exchange."; }
     else if (noHourly) { what = "No prices right now"; todo = `${hourlyGone}. Start AION 2 with Play AION 2 in Flav-Toolkit and open the Exchange: its own prices come in by themselves.`; }
     else { what = "Prices are a2-tracker's hourly ones"; todo = "Start AION 2 with Play AION 2 in Flav-Toolkit's tray and open the Exchange for its own prices before you buy."; }
-    return h("div", { class: "pwarn" }, h("div", { class: "pw1" }, h("span", { class: "ico", text: "!" }), b(what)), h("div", { class: "pw2", text: todo }));
+    // Flav-Toolkit 0.17.0 checks why itself: "Find out why" brings its hub up on Something's wrong? for the Exchange
+    const why = f && f.state === "connected" && (f.features || []).includes("help")
+      ? h("button", { type: "button", class: "pwhy", text: "Find out why", onclick: (e) => { e.stopPropagation(); post("/api/help", { about: "exchange" }).catch(() => {}); } }) : null;
+    return h("div", { class: "pwarn" }, h("div", { class: "pw1" }, h("span", { class: "ico", text: "!" }), b(what), why), h("div", { class: "pw2", text: todo }));
   }
   // Every step that could be cheaper bought, at the top of the Steps and Buy tabs: what is already worked in, and which
   // lists to open on the Exchange to know.

@@ -28,7 +28,7 @@ const TYPES = ['market-summary', 'market-listings', 'item-stats', 'inventory', '
 const LOOK_MS = 3000;     // how often feed.json is looked for while not connected
 const HOLD_MS = 30000;    // after a refusal (wrong version, unknown type): wait before trying again
 const BEAT_MS = 2000;
-const FEATURES = ['lock', 'hotkeys', 'settings']; // what this add-on understands beyond events (an older core ignores it)
+const FEATURES = ['lock', 'hotkeys', 'settings', 'help']; // what this add-on understands beyond events (an older core ignores it)
 
 const feedFile = () => process.env.FLAV_FEED_FILE || path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'com.flavbest.flav-toolkit', 'feed.json');
 
@@ -162,6 +162,9 @@ class Feed {
   log(level, msg) { return this.send({ op: 'log', level, msg: String(msg).slice(0, 300) }); }
   /* Show or hide one of this add-on's overlays (the core shows it while the game is in front). */
   overlay(id, shown) { return this.send({ op: 'overlay', id: String(id), shown: !!shown }); }
+  /* The player clicked "Find out why" (core 0.17.0, ADDONS.md 4): the hub comes up on *Something's wrong?* for the
+     Exchange, its checks already run. Only from that click; only when the core granted `help` (else false). */
+  help(about) { return this.granted.includes('help') ? this.send(about === 'exchange' ? { op: 'help', about: 'exchange' } : { op: 'help' }) : false; }
   /* The player clicked the padlock on this add-on's overlay: every overlay unlocks. Only from that click, and only
      when the core granted `lock` (it ignores it otherwise). */
   unlock() { return this.granted.includes('lock') ? this.send({ op: 'lock', locked: false }) : false; }

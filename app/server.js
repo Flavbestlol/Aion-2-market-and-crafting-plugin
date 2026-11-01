@@ -473,6 +473,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/overlay') return send(res, 200, { shown: listOpen() });
       if (p === '/api/craft') { if (body.clear === true && crafting.clear()) tell('craft', 'null'); return send(res, 200, { craft: crafting.view() }); }
       if (p === '/api/unlock') return send(res, 200, { ok: feed.unlock() });
+      if (p === '/api/help') return send(res, 200, { ok: feed.help(body.about === 'exchange' ? 'exchange' : null) }); // "Find out why": only from its click
       if (p === '/api/open') return send(res, 200, { ok: openPage() });
       if (p === '/api/quit') { send(res, 200, { ok: true }); setTimeout(() => process.exit(0), 200); return; }
       return send(res, 404, { error: 'not found' });

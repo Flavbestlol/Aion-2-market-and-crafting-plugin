@@ -183,6 +183,7 @@ function capChips(k) {
 // Where the prices come from: the Exchange as the game saw it, else a2-tracker.
 function priceSource(m) {
   if (m && m.live) return '<span class="live">Exchange prices</span> · seen ' + (m.ageMin == null || m.ageMin < 1 ? 'just now' : m.ageMin + ' min ago') + (m.ladders ? ' · ' + m.ladders + ' list' + (m.ladders === 1 ? '' : 's') + ' opened' : '');
+  if (L && L.tracker && L.tracker.state && L.tracker.state !== 'ok') return 'no prices yet · open the Exchange in game (a2-tracker\'s hourly prices aren\'t available)';
   return 'a2-tracker prices (hourly) · start the game with Play in Flav-Toolkit for the Exchange\'s own';
 }
 // Whether the bag, storage and warehouse were read (Flav-Toolkit), and the Kina in hand.
