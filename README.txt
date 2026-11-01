@@ -83,9 +83,14 @@ Prices: the Exchange itself while you play, a2-tracker.com's public data otherwi
   Exchange pages the game downloads and hands them to this app (POST /api/market, this PC only).
   The list then says "Exchange prices - seen N min ago": every item's cheapest listing ("live")
   from the moment the Exchange opens; an item whose list you opened is priced from its real
-  ladder, the cheapest listings that cover the quantity ("exact"). Older than 45 minutes is
-  ignored and a2-tracker's hourly prices take over. What was seen is kept in data\market.json
-  (item ids, prices, quantities; nothing about you or other players).
+  ladder, the cheapest listings that cover the quantity ("exact"). After 45 minutes a price is
+  no longer "live": a2-tracker's hourly price takes over when there is one, else the last price
+  seen is kept for 14 days and shown with its age ("seen 2 h ago"). What was seen is kept in
+  data\market.json (item ids, prices, quantities; nothing about you or other players).
+  Steps and materials always show, priced or not: a price not seen yet shows as "no price yet"
+  and the total gets a "+". "From T1" (Steps) and "Recipe" (Gear) show a piece's whole recipe
+  from T1, whatever you own or wear. The usual price behind cheap / fair / pricey comes from
+  the game's own purchase dialog (its 7-day average) first, a2-tracker's history otherwise.
   When a2-tracker.com refuses the app (it has answered "access restricted" since 2026-10-30), the
   app doesn't ask it again for 6 hours and prices from the Exchange alone; the list says so.
   Flav-Toolkit never sends

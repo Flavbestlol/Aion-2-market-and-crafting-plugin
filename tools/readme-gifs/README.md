@@ -14,8 +14,8 @@ Nothing here talks to the game, and nothing from a real session is used.
 ## What you need
 
 - Python 3 with Playwright (`pip install playwright`, then `playwright install chromium`), Node.js, ffmpeg.
-- The overlay page: copy `crates/flav-app/ui` from [Flav-Toolkit](https://github.com/Flavbestlol/flav-toolkit)
-  into `stage/ui/`.
+- The overlay page: copy `crates/flav-app/ui` from Flav-Toolkit's source (the source zip on its
+  [download page](https://flavbestlol.github.io/flav-toolkit/)) into `stage/ui/`.
 - Fonts close to the overlay's Windows fonts in `stage/fonts/`: `barlow-semi-condensed-latin-{500,600,700}-normal.woff2`
   (`npm i @fontsource/barlow-semi-condensed`). Inter, if installed, stands in for Segoe UI.
 - One or two clean game screenshots as `stage/bg1.png` and `stage/bg2.png`, 1456×818: no chat, no names, no party

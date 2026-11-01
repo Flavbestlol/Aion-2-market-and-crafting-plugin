@@ -120,22 +120,27 @@ function createEngine(catalogue, opts) {
     }
     function analyze(target) {
       const memo = new Map(), busy = new Set();
+      /* The cheapest way to craft with recipe r: each input bought or crafted, whichever is cheaper. An input with no
+         price anywhere (nothing seen on the Exchange, no NPC, nothing to craft it from that is priced) doesn't stop the
+         plan: its first option is taken and the result is `unknown` (its cost counts only what is priced), so the steps
+         and materials are still known when the prices aren't. A priced option always wins over an unpriced one. */
       function craftCost(r, depth) {
         const y = yieldOf(r); if (!y) return null;
-        let attempt = 0; const picks = [];
+        let attempt = 0, unknown = false; const picks = [];
         for (const input of r.ingredients || []) {
-          let best = null;
+          let best = null, blind = null;
           for (const opt of optionsOf(input)) {
             const b = resolve(String(opt.itemId), depth + 1);
-            if (b.unit == null) continue;
+            if (b.unit == null || b.unknown) { if (!blind) blind = { opt, line: b.unit == null ? 0 : Number(opt.quantity) * b.unit }; continue; }
             const line = Number(opt.quantity) * b.unit;
             if (!best || line < best.line) best = { opt, line };
           }
+          if (!best && blind) { best = blind; unknown = true; }
           if (!best) return null;
           attempt += best.line; picks.push(best.opt);
         }
         if (!picks.length) return null;
-        return { recipe: r, unit: attempt / y.perAttempt, picks, yield: y };
+        return { recipe: r, unit: attempt / y.perAttempt, picks, yield: y, unknown };
       }
       function resolve(key, depth) {
         if (memo.has(key)) return memo.get(key);
@@ -143,12 +148,15 @@ function createEngine(catalogue, opts) {
         const out = { itemId: key, buy: b ? b.price : null, unit: b ? b.price : null, source: b ? 'buy' : null, npc: !!(b && b.npc), craft: null };
         if (busy.has(key) || depth > DEPTH) return out;
         busy.add(key);
-        for (const r of candidates(key)) { const c = craftCost(r, depth); if (c && (!out.craft || c.unit < out.craft.unit)) out.craft = c; }
+        // a fully priced recipe beats one with unpriced inputs; among the same kind, the cheapest
+        const better = (c, o) => (!o ? true : !!o.unknown !== !!c.unknown ? !c.unknown : c.unit < o.unit);
+        for (const r of candidates(key)) { const c = craftCost(r, depth); if (c && better(c, out.craft)) out.craft = c; }
         busy.delete(key);
         if (out.craft) {
           const tier = out.craft.recipe.viewKind === 'conditional-outcome', convert = out.craft.recipe.method === 'convert';
-          const craft = tier && !convert ? true : (!convert && out.unit != null ? false : (out.unit == null || out.craft.unit < out.unit));
-          if (craft) { out.unit = out.craft.unit; out.source = convert ? 'convert' : 'craft'; }
+          // an unpriced craft never beats a known price (it would look cheap only because a part is missing)
+          const craft = tier && !convert ? (!out.craft.unknown || out.unit == null) : (!convert && out.unit != null ? false : (out.unit == null || (!out.craft.unknown && out.craft.unit < out.unit)));
+          if (craft) { out.unit = out.craft.unit; out.source = convert ? 'convert' : 'craft'; out.unknown = !!out.craft.unknown; }
         }
         memo.set(key, out);
         return out;
@@ -163,7 +171,9 @@ function createEngine(catalogue, opts) {
         res.missing = [...new Set((target.ingredients || []).filter(i => !optionsOf(i).some(x => resolve(String(x.itemId), 1).unit != null)).map(i => String(i.itemId)))];
         return res;
       }
-      res.cost = top.unit; res.perAttempt = ty.perAttempt;
+      // with an unpriced material somewhere: no cost, but the steps and materials below are still worked out
+      if (top.unknown) res.blocker = 'prices'; else res.cost = top.unit;
+      res.perAttempt = ty.perAttempt;
       // Expand the chosen path into bought leaf materials (for the "what you need" list).
       // Also the crafting steps, deepest first (crafting order), as a2-tracker's recipe page lists them.
       const leaves = new Map(), active = new Set(), steps = new Map(), order = [];
@@ -179,14 +189,15 @@ function createEngine(catalogue, opts) {
           const row = st.rows.get(k) || { itemId: k, perAttempt: Number(opt.quantity), count: 0, source: crafted ? info.source : (info.npc ? 'npc' : 'buy'), unit: info.unit, recipeId: crafted ? info.craft.recipe.id : null };
           row.count += need; st.rows.set(k, row);
           if (!crafted) {
-            const l = leaves.get(k) || { itemId: k, count: 0, unit: info.unit, npc: info.npc, cost: 0 };
-            l.count += need; l.cost += need * info.unit; leaves.set(k, l);
+            const l = leaves.get(k) || { itemId: k, count: 0, unit: info.unit, npc: info.npc, cost: info.unit == null ? null : 0 };
+            l.count += need; if (info.unit != null) l.cost += need * info.unit; leaves.set(k, l);
           } else expand(info.craft, need);
         }
         if (!order.includes(plan.recipe.id)) order.push(plan.recipe.id);
         active.delete(plan.recipe.id);
       })(top, 1);
-      res.materials = [...leaves.values()].sort((a, b) => b.cost - a.cost);
+      res.materials = [...leaves.values()].sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1));
+      if (top.unknown) res.missing = res.materials.filter(m => m.unit == null).map(m => m.itemId);
       res.steps = order.map(id => { const s = steps.get(id); return { ...s, rows: [...s.rows.values()] }; });
       return res;
     }
@@ -245,7 +256,9 @@ function createEngine(catalogue, opts) {
         const buy = snap.market(step.artisan.itemId);
         const lad = step.artisan.ladder ? snap.analyze(step.artisan.ladder) : null;
         const craft = lad && lad.cost != null ? lad.cost : null;
-        const useCraft = craft != null && (craftArtisan || buy == null || craft < buy);
+        // its ladder can be crafted (its steps are known, even when a material of it has no price yet)
+        const canCraft = !!(lad && lad.steps && lad.steps.length);
+        const useCraft = canCraft && (craftArtisan || buy == null || (craft != null && craft < buy));
         const unit = useCraft ? craft : buy;
         const count = perAttempt ? step.artisan.quantity / perAttempt : null;
         artisan = { itemId: step.artisan.itemId, buy, craft, unit, source: useCraft ? 'craft' : buy != null ? 'buy' : null, count, line: unit != null && count != null ? unit * count : null, ladderMaterials: lad ? lad.materials : [], ladderSteps: lad && lad.steps ? lad.steps : [] };

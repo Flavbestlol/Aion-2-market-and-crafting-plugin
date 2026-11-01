@@ -5,7 +5,7 @@
 <p align="center">
   <img alt="Version 0.16.3" src="https://img.shields.io/badge/version-0.16.3-f2c35b?style=for-the-badge">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%2F%2011-1f6fd6?style=for-the-badge">
-  <a href="https://github.com/Flavbestlol/flav-toolkit"><img alt="A Flav-Toolkit add-on" src="https://img.shields.io/badge/a%20Flav--Toolkit-add--on-ff8540?style=for-the-badge"></a>
+  <a href="https://flavbestlol.github.io/flav-toolkit/"><img alt="A Flav-Toolkit add-on" src="https://img.shields.io/badge/a%20Flav--Toolkit-add--on-ff8540?style=for-the-badge"></a>
   <img alt="Vibe coded" src="https://img.shields.io/badge/vibe-coded-6fe3a1?style=for-the-badge">
   <a href="https://ko-fi.com/flavbest"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white"></a>
 </p>
@@ -33,7 +33,7 @@
 
 ## What it does
 
-Dragon Gear Prices is an add-on for [Flav-Toolkit](https://github.com/Flavbestlol/flav-toolkit). Four tabs in one small panel that sits over AION 2: **Gear**, **Buy**, **Steps** and **Alerts**. Drag it anywhere; clicks beside it go to the game.
+Dragon Gear Prices is an add-on for [Flav-Toolkit](https://flavbestlol.github.io/flav-toolkit/). Four tabs in one small panel that sits over AION 2: **Gear**, **Buy**, **Steps** and **Alerts**. Drag it anywhere; clicks beside it go to the game.
 
 It keeps itself up to date: when you buy, craft or move something, or open an item on the Market in game, the panel redraws by itself (⚙ › *Update by itself*; nothing is downloaded and nothing is asked of the game). ⚙ › *Size* makes everything in it larger, from 90 % to 150 %.
 
@@ -60,7 +60,8 @@ It keeps itself up to date: when you buy, craft or move something, or open an it
 - **How to get the Kina**: how many Quna packs, then which Kina Chests (10M, 2M, 400k) to buy at or under the prices it shows.
 - **What you already have** is taken off: your bag, storage and warehouse are read from the game, and a line they cover is marked *covered*. Kina in hand counts too.
 - **Several pieces at once**: Ctrl+click to add one, or *All* for the whole set.
-- **A verdict on every line**: pricey (better to wait), fair or cheap, against the usual price.
+- **A verdict on every line**: pricey (better to wait), fair or cheap, against the usual price (the game's own 7-day average from the purchase dialog, a2-tracker's history otherwise).
+- **Old prices are kept, with their age.** A price seen on the Exchange stays on its line after it stops being live, marked *seen 2 h ago*, until you open the Exchange again. An item never seen yet says *no price yet*, and the total gets a **+**.
 
 ### Every craft, in order
 
@@ -68,7 +69,8 @@ It keeps itself up to date: when you buy, craft or move something, or open an it
   <img src="docs/steps.gif" alt="The Steps tab: buy some, craft the rest, copy a name, tick a step" width="640">
 </p>
 
-- **Step by step**: get the Kina, then each craft in order with its cost, its tries and its materials.
+- **Step by step**: get the Kina, then each craft in order with its cost, its tries and its materials, priced or not: a missing price never hides a step.
+- **The whole recipe from T1.** *From T1* on the Steps tab (or *Recipe* on a finished piece in the Gear tab) shows every step and material from the start, whatever you own or wear: to craft it again, or for another character. Click it again to go back to your plan.
 - **Buy some, craft the rest.** When some listings on the Market are cheaper than crafting one more, the step says how many to buy, up to what price, how many to craft and what it saves.
 - **Craft it myself.** When the gold Artisan's piece is cheaper to buy than to craft, the plan buys it and says so, with both prices. One click on *Craft it myself* puts its green, blue and gold steps back on the list, with how many of each.
 - **What you already made counts.** Crafted items in your bag (10 of the 18 Splendent gloves, made before a break) come off their step: fewer to make, fewer tries, and the next step says they're in hand. A step you have all of is done by itself.
@@ -109,7 +111,7 @@ When the game isn't being read, prices come from [a2-tracker.com](https://a2-tra
 
 ## Install
 
-You need **Windows 10 or 11** (64-bit), **AION 2**, and **[Flav-Toolkit](https://github.com/Flavbestlol/flav-toolkit)** 0.7.0 or later with [Npcap](https://npcap.com) (Flav-Toolkit's README says how).
+You need **Windows 10 or 11** (64-bit), **AION 2**, and **[Flav-Toolkit](https://flavbestlol.github.io/flav-toolkit/)** (install it from its download page; 0.19.0 or later gets its updates and the store from there) with [Npcap](https://npcap.com) (the download page says how).
 
 1. **Install it from the hub.** Open Flav-Toolkit's hub (double-click its tray icon), go to **Get add-ons** and click **Install** on *Dragon Gear Prices*. The hub downloads it from Flav-Toolkit's own signed catalogue, checks it, and starts it; it starts with Flav-Toolkit from then on. Everything it needs comes in the package, Node.js included.
 2. **Play.** Start AION 2 with **Play AION 2** in Flav-Toolkit (so the Market can be read), log in, and open the panel from the dock by the minimap.
@@ -134,7 +136,7 @@ In a copy from this repository, double-click `Dragon Gear Prices.bat`: it starts
 
 Here is exactly what it does:
 
-- **It reads, it never plays.** No packets to the game, no key presses, no reading the game's memory, no touching its files. What it knows about the game comes from Flav-Toolkit, which reads only what the game already sends to your PC. How Flav-Toolkit reads the Market, and what it may and may not do, is written down in its [`docs/SECURITY.md`](https://github.com/Flavbestlol/flav-toolkit/blob/main/docs/SECURITY.md).
+- **It reads, it never plays.** No packets to the game, no key presses, no reading the game's memory, no touching its files. What it knows about the game comes from Flav-Toolkit, which reads only what the game already sends to your PC. How Flav-Toolkit reads the Market, and what it may and may not do, is written down in its `docs/SECURITY.md`, in the source zip on its [download page](https://flavbestlol.github.io/flav-toolkit/).
 - **It runs on your PC only.** The app answers at `127.0.0.1:7317`, which nothing outside your PC can reach. Your plan, ticks, alerts and what was read from the game stay in its folder (`settings.json`, `data\`). Delete them any time.
 - **No account, no telemetry, no uploads.** The only sites it asks are the ones listed in `addon.json`: [a2-tracker.com](https://a2-tracker.com) (prices, recipes and item data), the official AION 2 site (`aion2.plaync.com`, `api-search.plaync.com`: your character's name and server, only when the game isn't being read), the game's icon server (`assets.playnccdn.com`), and `open.er-api.com` (today's exchange rate, for $/€/SAR). It asks them as itself, with its own name.
 - **One change outside its folder, only if you ask.** Turning on *hourly alerts* in the page adds a Windows task that starts the app hidden when you log in, so alerts keep working. Turning them off removes it.
@@ -149,6 +151,12 @@ Here is exactly what it does:
 <summary><b>The panel says prices are not live from the Market</b></summary>
 
 Start AION 2 with **Play AION 2** in Flav-Toolkit (not from the launcher alone), then open the Exchange in game. For exact buys, open the item's own list on the Exchange.
+</details>
+
+<details>
+<summary><b>The panel stopped updating after Flav-Toolkit restarted</b></summary>
+
+It reconnects by itself within about 10 seconds (Flav-Toolkit 0.7.0 or later). If it doesn't, close and open the add-on from the hub, and [open an issue](../../issues).
 </details>
 
 <details>

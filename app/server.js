@@ -144,7 +144,7 @@ function changedSoon(what) {
    the hour, else a2-tracker's hourly price; "usual" from the game's own 28-day average (the purchase dialog) or
    a2-tracker's history median. */
 function lookup(id) {
-  const live = market.min(id, 'kina');
+  const seen = market.min(id, 'kina'), live = seen && seen.source !== 'seen' ? seen : null; // an alert is about the price now, not hours ago
   const q = data && data.quotes.get(String(id));
   const tracker = q && q.currency === 'Kinah' ? Number(q.price) : null;
   const price = live ? live.price : tracker > 0 ? tracker : null;
@@ -459,6 +459,13 @@ const server = http.createServer(async (req, res) => {
           sh.craft_artisan = { ...(sh.craft_artisan && typeof sh.craft_artisan === 'object' ? sh.craft_artisan : {}) };
           if (ca.on) sh.craft_artisan[ca.slot] = true; else delete sh.craft_artisan[ca.slot];
         }
+        // "Whole recipe from T1" for one planned piece: every step and material from T1 to its stop, whatever is owned or
+        // worn (to craft it again, for another character)
+        const fu = body.full;
+        if (fu && typeof fu.slot === 'string' && typeof fu.on === 'boolean' && Slots.LAYOUT.some(x => x.id === fu.slot)) {
+          sh.full = { ...(sh.full && typeof sh.full === 'object' ? sh.full : {}) };
+          if (fu.on) sh.full[fu.slot] = true; else delete sh.full[fu.slot];
+        }
         let alertError = null;
         if (body.alert_add && typeof body.alert_add === 'object') { const r = alerts.add(body.alert_add); if (typeof r === 'string') alertError = r; else alerts.check('refresh'); }
         if (typeof body.alert_toggle === 'string') alerts.toggle(body.alert_toggle.slice(0, 40));
@@ -473,6 +480,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/overlay') return send(res, 200, { shown: listOpen() });
       if (p === '/api/craft') { if (body.clear === true && crafting.clear()) tell('craft', 'null'); return send(res, 200, { craft: crafting.view() }); }
       if (p === '/api/unlock') return send(res, 200, { ok: feed.unlock() });
+      if (p === '/api/help') return send(res, 200, { ok: feed.help(body.about === 'exchange' ? 'exchange' : null) }); // "Find out why": only from its click
       if (p === '/api/open') return send(res, 200, { ok: openPage() });
       if (p === '/api/quit') { send(res, 200, { ok: true }); setTimeout(() => process.exit(0), 200); return; }
       return send(res, 404, { error: 'not found' });

@@ -1,21 +1,23 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Market, coverCheapest, MAX_AGE_MS } = require('../market');
+const { Market, coverCheapest, MAX_AGE_MS, KEEP_MS } = require('../market');
 
 const T = 1_800_000_000; // seconds
 const listing = (item, unit, quantity, currency = 'kina', id = Math.random().toString(36).slice(2)) =>
   ({ id, item, quantity, unit_price: unit, sale_price: unit * quantity, currency, expires: '', is_set_item: false, conditions: [] });
 
-test('summary gives every item a cheapest price while fresh', () => {
+test('summary gives every item a cheapest price: live while fresh, then "seen" with its age, then none', () => {
   const m = new Market(null);
   assert.equal(m.take({ type: 'market-summary', at: T, server: 11304, rows: [{ item: 610530001, min_unit_price: 999, sale_count: 96 }] }), 'summary');
   // one row only: which market it is isn't known yet
   assert.equal(m.min(610530001, 'kina', T * 1000), null);
   // listings under that server id say it is the Kina market
   m.take({ type: 'market-listings', at: T, server: 11304, items: [7], sort: 'UnitPrice ASC', page: 1, has_next_page: false, listings: [listing(7, 5, 1, 'kina')] });
-  assert.deepEqual(m.min(610530001, 'kina', T * 1000), { price: 999, count: 96, at: T * 1000, source: 'summary' });
-  assert.equal(m.min(610530001, 'kina', T * 1000 + MAX_AGE_MS + 1), null);
+  assert.deepEqual(m.min(610530001, 'kina', T * 1000), { price: 999, count: 96, at: T * 1000, source: 'summary', ageMin: 0 });
+  // older than fresh: still the last price the game showed, with its age (a2-tracker no longer takes over)
+  assert.deepEqual(m.min(610530001, 'kina', T * 1000 + 2 * 3600000), { price: 999, count: 96, at: T * 1000, source: 'seen', ageMin: 120 });
+  assert.equal(m.min(610530001, 'kina', T * 1000 + KEEP_MS + 1), null);
   assert.equal(m.min(1, 'kina', T * 1000), null);
 });
 
@@ -152,4 +154,14 @@ test('buy some, craft the rest: listings cheaper than crafting are bought, whole
   assert.equal(pickListings([{ unit: 50, quantity: 20 }], 3, 100).bought, 0, 'a stack of 20 for 1,000 does not beat crafting 3 for 300');
   const c = pickListings([{ unit: 50, quantity: 4 }], 3, 100);
   assert.equal(c.bought, 4); assert.equal(c.used, 3); assert.equal(c.saves, 100, 'a stack of 4 for 200 beats crafting 3 for 300, one spare');
+});
+
+test('an item\'s list seen hours ago: its listings no longer count, its cheapest price does, with its age', () => {
+  const m = new Market(null);
+  m.take({ type: 'market-listings', at: T, server: 11304, items: [7], sort: 'UnitPrice ASC', page: 1, has_next_page: false, listings: [listing(7, 5, 3, 'kina'), listing(7, 9, 2, 'kina')] });
+  const later = T * 1000 + 3 * 3600000;
+  assert.equal(m.ladder(7, 'kina', later), null, 'no exact plan from old listings');
+  assert.equal(m.costOf(7, 2, 'kina', later), null);
+  assert.deepEqual(m.min(7, 'kina', later), { price: 5, count: 2, at: T * 1000, source: 'seen', ageMin: 180 });
+  assert.equal(m.status(later).live, false);
 });

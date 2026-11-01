@@ -103,6 +103,8 @@
   // a unit price: exact below 10,000 (kfmt would turn 1,190 into "1k"), shortened above
   const pfmt = (v) => (v == null ? "—" : v < 1e4 ? fmt(v) : kfmt(v));
   const kfmt = (v) => (v == null ? "—" : v >= 1e9 ? `${fmt(v / 1e9, 2)}B` : v >= 1e6 ? `${fmt(v / 1e6, v >= 1e8 ? 0 : 1)}M` : v >= 1e3 ? `${fmt(v / 1e3, 0)}k` : fmt(v));
+  // how long ago, short: "40 min", "3 h", "2 d"
+  const ageShort = (m) => (m == null ? "" : m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`);
   const cnt = (v) => (v >= 10 || Math.abs(v - Math.round(v)) < 0.05 ? fmt(v) : fmt(v, 1));
   // Money in the currency picked in the app ($, € or SAR).
   const cur = () => G?.cur || L?.money || { sym: "$", before: true };
@@ -247,8 +249,13 @@
       $("chips").replaceChildren(...chips);
       requestAnimationFrame(() => { $("chips").querySelector(".chip.on:not(.all)")?.scrollIntoView({ inline: "nearest", block: "nearest" }); arrows(); });
       const ch = L.chosen;
-      $("sum").replaceChildren(h("span", { text: ch.length === 1 ? `${ch[0].label} · T${ch[0].have} → T${ch[0].goal}` : `${ch.length} pieces` }),
-        h("span", { class: "r" }, b(`${kfmt(L.totalKina)} Kina`), side(toMoney(L.totalKina))));
+      // one piece: "Whole recipe" shows every step and material from T1, whatever is owned (to craft it again)
+      const one = ch.length === 1 ? ch[0] : null;
+      const whole = one ? h("button", { type: "button", class: `whole${one.full ? " on" : ""}`, title: one.full ? `Back to your plan: from the tier you own (T${one.owns})` : "Every step and material from T1 to its stop, whatever you own or wear (to craft it again, for another character)", text: "From T1", onclick: (e) => { e.stopPropagation(); change({ full: { slot: one.slot, on: !one.full } }); } }) : null;
+      // with items that have no price yet (not seen on the Exchange), the total is "at least"
+      const some = L.unpriced > 0;
+      $("sum").replaceChildren(h("span", { text: one ? `${one.label} · ${one.full ? "whole recipe " : ""}T${one.have} → T${one.goal}` : `${ch.length} pieces` }), whole,
+        h("span", { class: "r", title: some ? `${L.unpriced} item${L.unpriced === 1 ? " has" : "s have"} no price yet: open ${L.unpriced === 1 ? "it" : "them"} on the Exchange in game` : "" }, b(`${kfmt(L.totalKina)}${some ? "+" : ""} Kina`), side(toMoney(L.totalKina))));
       $("src").replaceChildren(...priceSource(L.market), ...inventorySource(L.inventory));
 
       const k = L.kina;
@@ -285,7 +292,7 @@
               h("div", { class: "sb" }, h("span", { text: `${it.npc ? "NPC · " : ""}${pfmt(it.unit)} each` }), liveTag(it), verdictTag(it.plan), shortTag(it), haveTag(it)),
               planLine(it)),
             h("div", { class: "rt" }, it.owned ? h("span", { class: "okc big", text: "✓ covered" }) : b(it.have && it.have.total > 0 ? `×${fmt(it.missing)} more` : `×${fmt(it.qty)}`),
-              h("small", { text: it.owned ? `needed ${fmt(it.qty)} · in hand ${fmt(it.have.total)}` : `${kfmt(it.cost)} Kina · ${cash(toMoney(it.cost))}` }))));
+              h("small", { text: it.owned ? `needed ${fmt(it.qty)} · in hand ${fmt(it.have.total)}` : it.cost == null ? "no price yet" : `${kfmt(it.cost)} Kina · ${cash(toMoney(it.cost))}` }))));
         }
       } else if (oneStep() || folded) {
         renderOneStep(rows, ticks, k, kk);
@@ -372,6 +379,8 @@
       pic(s.icon),
       h("div", { class: "mid" }, h("div", { class: "nm" }, h("span", { text: s.label, style: "color:var(--ink);font:inherit;margin:0" }), h("span", { text: s.have >= s.goal ? `T${s.have} · stops at T${s.goal}` : `T${s.have} → T${s.goal}` })), h("div", { class: "bars" }, ...bars), wear),
       h("div", { class: "rt" }, done ? h("span", { class: "v done", text: s.have < s.goal ? "Left out" : s.goal >= 6 ? "Done" : s.have > s.goal ? `Past T${s.goal}` : `At T${s.goal}` }) : h("div", {}, ...kina(s.kina)),
+        // a done piece can still show its whole recipe from T1 (to craft it again, for another character)
+        done ? h("button", { type: "button", class: "recipe", title: "Its whole recipe from T1: every step and material", text: "Recipe", onclick: (e) => { e.stopPropagation(); view = "steps"; localStorage.setItem("shop-view", view); change({ full: { slot: s.slot, on: true }, sel: [s.slot] }); } }) : null,
         done ? null : h("small", { class: "usd blk", text: cash(s.money, 0) }),
         done ? null : h("span", { class: `v ${s.kind}`, text: s.pct == null ? LABEL[s.kind] : `${LABEL[s.kind]} ${s.pct > 0 ? "+" : ""}${fmt(s.pct, 1)}%` })));
   }
@@ -380,7 +389,8 @@
   const inventorySource = (inv) => (inv && inv.fresh ? [h("span", { text: " · " }), h("span", { class: "live", text: "bag read" }), h("span", { text: inv.kina != null ? ` · ${kfmt(inv.kina)} Kina` : "" })] : []);
   const priceSource = (m) => (m && m.live
     ? [h("span", { class: "live", text: "Exchange prices" }), h("span", { text: ` · seen ${m.ageMin == null || m.ageMin < 1 ? "just now" : `${m.ageMin} min ago`}${m.ladders ? ` · ${m.ladders} list${m.ladders === 1 ? "" : "s"} opened` : ""}` })]
-    : [h("span", { text: "a2-tracker prices (hourly) · start the game with Play in Flav-Toolkit for the Exchange's own" })]);
+    : m && m.kept ? [h("span", { text: `Exchange prices from ${ageShort(m.kept.ageMin)} ago · open the Exchange in game for today's` })]
+      : [h("span", { text: L && L.tracker && L.tracker.state && L.tracker.state !== "ok" ? "no prices yet · open the Exchange in game (a2-tracker's hourly prices aren't available)" : "a2-tracker prices (hourly) · start the game with Play in Flav-Toolkit for the Exchange's own" })]);
   // "buy 935 in 3 stacks (328 + 367 + 240) ≤ 1,200 each": the whole listings that cover the quantity, cheapest first
   const planLine = (it) => {
     const p = it.plan;
@@ -407,8 +417,12 @@
   const whereHave = (h_) => [["bag", h_.bag], ["storage", h_.storage], ["warehouse", h_.warehouse]].filter(([, n]) => n > 0).map(([w, n]) => `${w} ${fmt(n)}`).join(" · ");
   const haveTag = (it) => (!it.have || it.have.total <= 0 || it.owned ? null
     : h("span", { class: `vd have${it.owned ? " all" : ""}`, title: `Read from the game: ${whereHave(it.have)}`, text: it.owned ? `have ${fmt(it.have.total)}` : `have ${fmt(it.have.total)} of ${fmt(it.qty)}` }));
+  // a price the game showed on the Exchange a while ago: still the last one known, with its age
+  const seenTag = (ageMin) => h("span", { class: "tag old", title: `The cheapest listing the game showed on the Exchange ${ageShort(ageMin)} ago: open the Exchange in game for today's`, text: `seen ${ageShort(ageMin)} ago` });
   const liveTag = (it) => (it.source === "ladder" ? h("span", { class: "tag ex", title: "From the Exchange's own list: the cheapest listings that cover this many", text: it.exact ? "exact" : "list" })
-    : it.source === "summary" ? h("span", { class: "tag lv", title: "The cheapest listing the game saw on the Exchange", text: "live" }) : null);
+    : it.source === "summary" ? h("span", { class: "tag lv", title: "The cheapest listing the game saw on the Exchange", text: "live" })
+      : it.source === "seen" ? seenTag(it.ageMin)
+        : it.source == null && !it.npc && it.unit == null ? h("span", { class: "tag old", title: "Not seen on the Exchange yet: open it there in game for its price", text: "no price yet" }) : null);
 
   // The Quna shop. With the chests' real lists (opened in game, read by Flav-Toolkit) the plan is exact: how many of
   // each chest, cheapest Kina per Quna first. Without them, a price cap per chest (one Quna-per-Kina line a little above
@@ -506,7 +520,8 @@
   // floor, so open the list for the exact count. No price seen: open it to compare. A click copies the name.
   const buyTag = (y) => (y.source === "ladder" ? h("span", { class: "tag ex", title: `From its own list on the Exchange, opened in game ${minsAgo(y.ageMin)}: the cheapest listings that cover this`, text: y.exact ? "exact" : "list" })
     : y.source === "live" ? h("span", { class: "tag lv", title: "The cheapest listing the game saw on the Exchange; open the item's list for the exact price of all of them", text: "live" })
-      : h("span", { class: "tag old", title: "a2-tracker's hourly price: not the Exchange right now", text: "hourly" }));
+      : y.source === "seen" ? seenTag(y.ageMin)
+        : h("span", { class: "tag old", title: "a2-tracker's hourly price: not the Exchange right now", text: "hourly" }));
   function compareCard(c) {
     const y = c.buy, n = cnt(c.left);
     const craft = h("div", { class: "cbr" }, h("span", { class: "k", text: "Craft" }), b(`${n}×`), h("span", { text: ` ~${pfmt(Math.round(c.craftUnit))} each · ${kfmt(c.craftCost)}` }), h("small", { text: " · failed tries included" }));
@@ -539,12 +554,15 @@
     let what, todo;
     if (!f || f.state !== "connected") { what = "Flav-Toolkit isn't running"; todo = "Start it, then Play AION 2 from its tray to read the Exchange's own prices."; }
     // Flav-Toolkit 0.12.0 says whether it reads the Exchange: started with Play AION 2 and nothing seen yet is not a fault
-    else if (f.exchange === "ready" || f.exchange === "live") return soft("Open the Exchange in game", ` to read its own prices · ${noHourly ? hourlyGone : "hourly prices meanwhile"}`);
+    else if (f.exchange === "ready" || f.exchange === "live") return soft("Open the Exchange in game", m && m.kept ? ` for today's prices · these are from ${ageShort(m.kept.ageMin)} ago` : ` to read its own prices · ${noHourly ? hourlyGone : "hourly prices meanwhile"}`);
     else if (f.exchange === "off") { what = "The Exchange can't be read"; todo = "AION 2 wasn't started through Flav-Toolkit: quit the game and start it with Play AION 2 in the tray, then open the Exchange."; }
     else if (f.game) { what = "The Exchange can't be read"; todo = "AION 2 wasn't started through Flav-Toolkit: quit the game and start it with Play AION 2 in the tray, then open the Exchange."; }
     else if (noHourly) { what = "No prices right now"; todo = `${hourlyGone}. Start AION 2 with Play AION 2 in Flav-Toolkit and open the Exchange: its own prices come in by themselves.`; }
     else { what = "Prices are a2-tracker's hourly ones"; todo = "Start AION 2 with Play AION 2 in Flav-Toolkit's tray and open the Exchange for its own prices before you buy."; }
-    return h("div", { class: "pwarn" }, h("div", { class: "pw1" }, h("span", { class: "ico", text: "!" }), b(what)), h("div", { class: "pw2", text: todo }));
+    // Flav-Toolkit 0.17.0 checks why itself: "Find out why" brings its hub up on Something's wrong? for the Exchange
+    const why = f && f.state === "connected" && (f.features || []).includes("help")
+      ? h("button", { type: "button", class: "pwhy", text: "Find out why", onclick: (e) => { e.stopPropagation(); post("/api/help", { about: "exchange" }).catch(() => {}); } }) : null;
+    return h("div", { class: "pwarn" }, h("div", { class: "pw1" }, h("span", { class: "ico", text: "!" }), b(what), why), h("div", { class: "pw2", text: todo }));
   }
   // Every step that could be cheaper bought, at the top of the Steps and Buy tabs: what is already worked in, and which
   // lists to open on the Exchange to know.
@@ -601,7 +619,9 @@
   const srcTag = (p) => (!p ? null : p.npc ? h("span", { class: "tag lv", text: "NPC" })
     : p.source === "ladder" ? h("span", { class: "tag ex", title: "From the Exchange's own list, opened in game: the cheapest listings that cover this", text: p.exact ? "exact" : "list" })
       : p.source === "summary" ? h("span", { class: "tag lv", title: "The cheapest listing the game saw on the Exchange; open the item's list for exact numbers", text: "live" })
-        : h("span", { class: "tag old", title: "a2-tracker's hourly price: not the Exchange right now. Start AION 2 with Play in Flav-Toolkit and open the Exchange", text: "hourly" }));
+        : p.source === "seen" ? seenTag(p.ageMin)
+          : p.source == null ? h("span", { class: "tag old", title: "Not seen on the Exchange yet: open it there in game for its price", text: "no price yet" })
+            : h("span", { class: "tag old", title: "a2-tracker's hourly price: not the Exchange right now. Start AION 2 with Play in Flav-Toolkit and open the Exchange", text: "hourly" }));
   const buyLine = (r) => {
     const p = r.plan;
     if (!p && madeInHand(r)) return h("div", { class: "dn cov" }, h("span", { class: "okc", text: "✓ in hand" }), h("span", { text: r.have ? ` · ${whereHave(r.have)}` : "" }));
@@ -614,6 +634,7 @@
       h("div", { class: "dn cov" }, h("span", { class: "okc", text: "✓ covered" }), h("span", { text: ` · in hand ${whereHave(r.have)}` })),
       h("div", { class: "dn" }, h("span", { text: "more: " }), b(`≤ ${pfmt(p.maxUnit)}`), h("span", { text: " each" }), srcTag(p), verdictTag(p)),
     ];
+    if (p.maxUnit == null && !p.npc) return h("div", { class: "dn" }, h("span", { text: "buy " }), b(fmt(p.buy)), h("span", { text: " · " }), srcTag(p)); // no price seen yet
     return h("div", { class: "dn" }, h("span", { text: `${p.npc ? "NPC shop · " : ""}buy ` }), b(fmt(p.buy)), h("span", { text: " ≤ " }), b(pfmt(p.maxUnit)),
       h("span", { text: ` each · ${kfmt(p.cost)} Kina · ${cash(toMoney(p.cost))}` }), srcTag(p), verdictTag(p));
   };
