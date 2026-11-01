@@ -67,7 +67,11 @@ In the page:
 settings.json            Saved automatically by the page.
 data\price-log.csv       One line per piece per refresh. Opens in Excel.
 data\icons-official\     Game item icons from the official AION 2 CDN, downloaded once.
-data\icons\              The same game icons from a2-tracker.com, where the CDN has none.
+data\icons\              The same game icons from a2-tracker.com or MetaBot.GG, where the CDN has none.
+data\catalogue.json      a2-tracker.com's recipe list as last given (used for 14 days).
+data\metabot.json        MetaBot.GG's recipe list as last read (asked at most once a day).
+app\recipes-metabot.json The copy of MetaBot.GG's list that came with this version (MetaBot.GG's data,
+                         reused with credit on its terms; not covered by this add-on's licence).
 data\fx.json             Today's exchange rates (refreshed once a day).
 data\market.json         The Exchange as last seen in game (via Flav-Toolkit), item data only.
 data\inventory.json      Your bag, storage and warehouse as last read from the game (via Flav-Toolkit):
@@ -93,6 +97,11 @@ Prices: the Exchange itself while you play, a2-tracker.com's public data otherwi
   the game's own purchase dialog (its 7-day average) first, a2-tracker's history otherwise.
   When a2-tracker.com refuses the app (it has answered "access restricted" since 2026-10-30), the
   app doesn't ask it again for 6 hours and prices from the Exchange alone; the list says so.
+Recipes: from the first that has a list, so a fresh install starts while a2-tracker refuses:
+  a2-tracker.com (once a day, never asked around a refusal), its copy on this PC while under
+  14 days old, MetaBot.GG's crafting page (https://metabot.gg/en/aion-2/crafting, once a day),
+  then the copy of MetaBot.GG's list that came with the add-on. The page and the list say which.
+  MetaBot.GG's data is reused with credit on its terms (a link to that page in the app's page).
   Flav-Toolkit never sends
   anything to the game or the Exchange: see its docs\SECURITY.md.
   Test the reader on its own: Flav-Toolkit\bin\flav.exe market --live --keys <key file>.

@@ -463,7 +463,11 @@ function useMyGear(id) {
 
 /* ---------- header ---------- */
 function header() {
-  $('server').textContent = S.server_name + ' · market data from a2-tracker.com';
+  // where the recipes come from: MetaBot.GG's data is reused on its terms, its name with a plain link to its page
+  const rs = R.recipes || {}, srv = $('server');
+  srv.textContent = S.server_name + ' · recipes from ';
+  if (rs.name === 'MetaBot.GG' && /^https:\/\/metabot\.gg\//.test(rs.page)) { const a = document.createElement('a'); a.href = rs.page; a.target = '_blank'; a.textContent = 'MetaBot.GG'; srv.append(a); }
+  else srv.append('a2-tracker.com');
   const gen = new Date(R.generatedAt), mins = Math.round((Date.now() - gen) / 60000);
   $('stamp').className = 'stamp' + (mins > 90 ? ' old' : '');
   $('stamp').innerHTML = 'Updated <b>' + (mins < 1 ? 'just now' : mins < 90 ? mins + ' min ago' : gen.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })) + '</b><br>prices ~' + Math.round(R.delaySeconds / 60) + ' min behind the game';
@@ -746,7 +750,8 @@ function notes() {
     'Costs use the same model as a2-tracker’s Dragon Gear tab: the cheapest craft-or-buy path for every material, failed tries included. T2–T6 always succeed. The 25% chance to skip a Splendent tier is not counted.',
     'Kina → money: the live 10M Kina Chest price in Quna, then the Quna pack (' + fmt(M().quna) + ' Quna = €' + fmt(M().eur, 2) + ') in ' + M().code + ' at today\'s exchange rate. Rates By Exchange Rate API (exchangerate-api.com).',
     '“vs usual” compares the cost now with its median over the last ' + S.history_days + ' days, rebuilt hour by hour from each material’s price history. Cheap = ' + S.cheap_when_below_usual_percent + '% or more below usual. “Good price” = where the cheapest 10% of hours start.',
-    'Item icons are the game’s own, kept on your PC: from the official AION 2 CDN (assets.playnccdn.com), and a2-tracker.com’s copy where the CDN has none. Class emblems and the banner were made for this app.',
+    'Recipes: a2-tracker.com’s list while it gives it (it refuses Dragon Gear since 2026-10-30, so its last copy on your PC is used for 14 days), then MetaBot.GG’s (metabot.gg/en/aion-2/crafting, read from the game client, reused with credit on its terms), then the copy of MetaBot.GG’s list that came with this version. MetaBot.GG’s list has no conversions to bound materials and no NPC prices: those materials are bought instead.',
+    'Item icons are the game’s own, kept on your PC: from the official AION 2 CDN (assets.playnccdn.com), else a2-tracker.com’s or MetaBot.GG’s copy of the same icon. Class emblems and the banner were made for this app.',
     'Your gear is read from the official AION 2 site (the same lookup as Flav-Toolkit\'s armory): one request a second, kept 10 minutes. A tier you set by hand stays until the game shows a different item in that slot.',
     'Crafting XP per level: aion2data.com table (totals match metabot.gg). XP per craft isn’t published, so you type what you see in game.',
   ].map(x => '<li>' + esc(x) + '</li>').join('');

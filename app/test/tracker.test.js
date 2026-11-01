@@ -31,12 +31,18 @@ const tracker = () => calls.filter(u => u.startsWith('https://a2-tracker.com/'))
 
 test.beforeEach(() => { fs.rmSync(path.join(C.DATA, 'tracker.json'), { force: true }); });
 
-test('a refusal without a recipe list on disk says so plainly', async () => {
+test('a refusal without a recipe list on disk still starts: MetaBot.GG, else the list that came with the add-on', async () => {
   fs.rmSync(catFile, { force: true });
+  fs.rmSync(path.join(C.DATA, 'metabot.json'), { force: true });
   C.Tracker.refused('HTTP 403 access_restricted');
-  refusing();
-  await assert.rejects(C.fetchAll(settings, () => {}), /refuses Dragon Gear Prices/);
+  refusing(); // MetaBot.GG can't be reached either
+  const data = await C.fetchAll(settings, () => {});
   assert.equal(tracker().length, 0, 'not asked while the refusal stands');
+  assert.equal(calls.filter(u => u.startsWith('https://metabot.gg/')).length, 1, 'MetaBot.GG asked once');
+  assert.equal(data.catalogue.source.name, 'MetaBot.GG');
+  assert.equal(data.catalogue.source.from, 'shipped');
+  assert.ok(data.catalogue.recipes.length >= 500);
+  fs.rmSync(path.join(C.DATA, 'metabot.json'), { force: true });
 });
 
 test('a refusal is asked once, not retried, and the refresh still finishes', async () => {

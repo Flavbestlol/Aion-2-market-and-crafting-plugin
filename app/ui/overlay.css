@@ -556,3 +556,4 @@ body.folded #craft { margin: 8px 8px 6px; }
 .whole:hover, .recipe:hover { color: var(--ink); border-color: rgba(255, 214, 140, 0.7); }
 .whole.on { color: #1b1406; background: #e8c07a; border-color: #e8c07a; }
 .recipe { margin: 3px 0 0; }
+.dim { opacity: .62; font-weight: 400; }

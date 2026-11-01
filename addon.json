@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "market-crafting",
   "name": "Dragon Gear Prices",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "author": "Flavbest",
   "emblem": "emblem.png",
   "kind": "external",
@@ -67,6 +67,7 @@
       "aion2.plaync.com",
       "api-search.plaync.com",
       "assets.playnccdn.com",
+      "metabot.gg",
       "open.er-api.com"
     ]
   },

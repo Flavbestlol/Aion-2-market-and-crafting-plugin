@@ -109,6 +109,14 @@ The add-on also has a full page at `http://127.0.0.1:7317` (only on your PC), fo
 
 When the game isn't being read, prices come from [a2-tracker.com](https://a2-tracker.com)'s public data (hourly), and your gear from the official AION 2 site. If a2-tracker refuses the add-on (since 2026-10-30 it answers *access restricted*), Dragon Gear doesn't ask it again for six hours and prices from the Market in game alone; the list says so.
 
+**The recipe list** comes from the first of these that has one, so a fresh install starts even while a2-tracker refuses:
+1. a2-tracker.com, asked once a day unless it refused the add-on lately (never asked around a refusal);
+2. a2-tracker's last copy on your PC, while it's under 14 days old;
+3. [MetaBot.GG's crafting page](https://metabot.gg/en/aion-2/crafting), read from the game client, asked at most once a day;
+4. the copy of MetaBot.GG's list that comes with the add-on (its recipes, plus the NPC prices, conversions to bound materials and bound stand-ins from MetaBot.GG's shop and Substance Morph pages).
+
+Checked on 2026-11-01: all 512 recipes on MetaBot.GG's page match a2-tracker's list to the last quantity, and every Dragon Gear tier on both sides costs the same from either list (228 tiers, the same prices). The page and the overlay say where the recipes came from.
+
 ## Install
 
 You need **Windows 10 or 11** (64-bit), **AION 2**, and **[Flav-Toolkit](https://flavbestlol.github.io/flav-toolkit/)** (install it from its download page; 0.19.0 or later gets its updates and the store from there) with [Npcap](https://npcap.com) (the download page says how).
@@ -138,7 +146,7 @@ Here is exactly what it does:
 
 - **It reads, it never plays.** No packets to the game, no key presses, no reading the game's memory, no touching its files. What it knows about the game comes from Flav-Toolkit, which reads only what the game already sends to your PC. How Flav-Toolkit reads the Market, and what it may and may not do, is written down in its `docs/SECURITY.md`, in the source zip on its [download page](https://flavbestlol.github.io/flav-toolkit/).
 - **It runs on your PC only.** The app answers at `127.0.0.1:7317`, which nothing outside your PC can reach. Your plan, ticks, alerts and what was read from the game stay in its folder (`settings.json`, `data\`). Delete them any time.
-- **No account, no telemetry, no uploads.** The only sites it asks are the ones listed in `addon.json`: [a2-tracker.com](https://a2-tracker.com) (prices, recipes and item data), the official AION 2 site (`aion2.plaync.com`, `api-search.plaync.com`: your character's name and server, only when the game isn't being read), the game's icon server (`assets.playnccdn.com`), and `open.er-api.com` (today's exchange rate, for $/€/SAR). It asks them as itself, with its own name.
+- **No account, no telemetry, no uploads.** The only sites it asks are the ones listed in `addon.json`: [a2-tracker.com](https://a2-tracker.com) (prices, recipes and item data), [MetaBot.GG](https://metabot.gg/en/aion-2/crafting) (one page, the recipe list, at most once a day, and its copies of item icons), the official AION 2 site (`aion2.plaync.com`, `api-search.plaync.com`: your character's name and server, only when the game isn't being read), the game's icon server (`assets.playnccdn.com`), and `open.er-api.com` (today's exchange rate, for $/€/SAR). It asks them as itself, with its own name.
 - **One change outside its folder, only if you ask.** Turning on *hourly alerts* in the page adds a Windows task that starts the app hidden when you log in, so alerts keep working. Turning them off removes it.
 - **It's open.** All the code is in this repository: read it, or run it from source.
 
@@ -186,6 +194,7 @@ A copy from Get add-ons has it: click **Repair** on its card. A copy from this r
 ## Credits
 
 - **[a2-tracker.com](https://a2-tracker.com)**: the Dragon Gear recipes, success rates, NPC prices, hourly Market prices and item data this add-on is built on.
+- **[MetaBot.GG](https://metabot.gg/en/aion-2/crafting)**: the recipe list when a2-tracker can't give it, read from the AION 2 Global client; its data is reused with credit on [its terms](https://metabot.gg/en/legal/terms-of-service). The copy in `app/recipes-metabot.json` is MetaBot.GG's data, not covered by this add-on's GPL-3.0 licence (`tools/make-recipes.js` makes it).
 - **[eiruuru/aion2-char-sheet](https://github.com/eiruuru/aion2-char-sheet)** (GPL-3.0): the server list.
 - **[Exchange Rate API](https://www.exchangerate-api.com)**: today's rates, with no account.
 - **[Node.js](https://nodejs.org)**: the runtime the app runs on.
