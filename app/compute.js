@@ -1,8 +1,10 @@
 'use strict';
-/* Data loading (a2-tracker public JSON, cached on disk) and the full price state for the app. */
+/* Data loading (the recipe list from a2-tracker or MetaBot.GG, a2-tracker's prices while it answers, all kept on disk)
+   and the full price state for the app. */
 const fs = require('fs'), path = require('path');
 const { createEngine } = require('./engine');
 const FX = require('./fx');
+const MetaBot = require('./metabot');
 
 const ROOT = path.resolve(__dirname, '..');
 const DATA = process.env.DRAGON_GEAR_DATA ? path.resolve(process.env.DRAGON_GEAR_DATA) : path.join(ROOT, 'data'); // the tests point it at a temporary folder
@@ -13,6 +15,10 @@ const SITE = 'https://a2-tracker.com';
 const TRACKER = path.join(DATA, 'tracker.json'); // when a2-tracker last refused the app, so it stops asking for a while
 const REFUSED_WAIT = 6 * 3600000; // after a refusal (HTTP 401/403), a2-tracker is not asked again for this long
 const CHESTS = { '516130001': 10000000, '516140001': 2000000, '516150001': 400000 };
+const MB_FILE = path.join(DATA, 'metabot.json');           // MetaBot.GG's recipe list as last read, with when
+const SHIPPED = path.join(__dirname, 'recipes-metabot.json'); // the same, as it came with this version of the add-on
+const DAY_MIN = 24 * 60;
+const A2T_KEEP_MIN = 14 * DAY_MIN; // a2-tracker's copy on disk is preferred over MetaBot's while younger than this
 for (const d of [DATA, HIST, ICONS]) fs.mkdirSync(d, { recursive: true });
 
 const LABELS = {
@@ -138,29 +144,90 @@ function hourlySeries(h) {
 }
 function priceAt(series, t) { for (let k = 0; k <= 6; k++) { const v = series.get(t - k * 3600000); if (v != null) return v; } return null; }
 
+/* The recipe list, from the first of these that has one (a fresh install starts with the last):
+   1. a2-tracker.com, asked once a day unless it refused the app lately (never asked around a refusal);
+   2. a2-tracker's copy on disk, while younger than A2T_KEEP_MIN;
+   3. MetaBot.GG's page (metabot.js), asked at most once a day, its copy kept on disk;
+   4. the newest of what is left: MetaBot's copy on disk, a2-tracker's older copy, the list shipped with the add-on.
+   The catalogue says where it came from (`source`), so the page can name and link it. Never throws for want of a
+   list while the shipped one is there. */
+async function loadRecipes({ off, force, now, progress, noted }) {
+  const catFile = path.join(DATA, 'catalogue.json');
+  const a2t = () => { const c = readJSON(catFile); if (!c || !Array.isArray(c.recipes) || !c.items) return null; c.source = { name: 'a2-tracker.com', page: SITE, from: 'kept', fetchedAt: new Date(fs.statSync(catFile).mtimeMs).toISOString() }; return c; };
+  if (!off && (force || ageMin(catFile) >= DAY_MIN)) {
+    progress('Recipe list', 0, 1);
+    try {
+      const c = await getJSON(SITE + '/api.crafting.ashx?locale=en-US');
+      if (!Array.isArray(c.recipes) || !c.items) throw new Error('recipe list looks wrong');
+      fs.writeFileSync(catFile, JSON.stringify(c));
+      c.source = { name: 'a2-tracker.com', page: SITE, from: 'live', fetchedAt: new Date(now).toISOString() };
+      return c;
+    } catch (e) { if (e.refused) noted(e); }
+  }
+  if (ageMin(catFile) < A2T_KEEP_MIN) { const c = a2t(); if (c) return c; }
+  const kept = readJSON(MB_FILE);
+  const keptOk = kept && kept.raw && typeof kept.askedAt === 'number';
+  if (!keptOk || force || now - kept.askedAt >= DAY_MIN * 60000) {
+    progress('Recipe list', 0, 1);
+    try {
+      const raw = MetaBot.parsePage(await getText(MetaBot.PAGE, MetaBot.MAX_PAGE));
+      Object.assign(raw, shippedExtras()); // not on the recipe page: the NPC prices, conversions and bound copies that came with the add-on
+      const fetchedAt = new Date(now).toISOString();
+      fs.writeFileSync(MB_FILE, JSON.stringify({ askedAt: now, fetchedAt, raw }));
+      return MetaBot.toCatalogue(raw, { from: 'live', fetchedAt });
+    } catch (e) {
+      logLine('MetaBot.GG recipe list: ' + e.message);
+      // asked: not again for a day, whatever it answered (its copy, if any, is kept)
+      try { fs.writeFileSync(MB_FILE, JSON.stringify(keptOk ? { ...kept, askedAt: now } : { askedAt: now, raw: null })); } catch { /* next time */ }
+    }
+  } else if (kept.raw) {
+    try { return MetaBot.toCatalogue(MetaBot.check(kept.raw), { from: 'kept', fetchedAt: kept.fetchedAt }); } catch { /* the next one */ }
+  }
+  // the newest of what is left
+  const left = [];
+  if (kept && kept.raw) left.push({ at: Date.parse(kept.fetchedAt) || 0, get: () => MetaBot.toCatalogue(MetaBot.check(kept.raw), { from: 'kept', fetchedAt: kept.fetchedAt }) });
+  if (fs.existsSync(catFile)) left.push({ at: fs.statSync(catFile).mtimeMs, get: a2t });
+  const shipped = readJSON(SHIPPED);
+  if (shipped && shipped.raw) left.push({ at: Date.parse(shipped.fetchedAt) || 0, get: () => MetaBot.toCatalogue(MetaBot.check(shipped.raw), { from: 'shipped', fetchedAt: shipped.fetchedAt }) });
+  for (const l of left.sort((a, b) => b.at - a.at)) { try { const c = l.get(); if (c) return c; } catch { /* the next one */ } }
+  throw new Error(off ? 'No recipe list: a2-tracker.com refuses Dragon Gear Prices right now (' + off.why + ') and MetaBot.GG could not be read. Try again later.' : 'No recipe list could be loaded. Try again later.');
+}
+/* Where the recipe list came from, for the page: { name, page, from: 'live'|'kept'|'shipped', fetchedAt }. MetaBot.GG's
+   data is reused on its terms: the page shows its name with a plain link to `page`. */
+const recipeSource = data => {
+  const s = data && data.catalogue && data.catalogue.source;
+  return s ? { name: s.name, page: s.page, from: s.from, fetchedAt: s.fetchedAt } : { name: 'a2-tracker.com', page: SITE, from: 'kept', fetchedAt: null };
+};
+const shippedExtras = () => {
+  const s = readJSON(SHIPPED), r = (s && s.raw) || {};
+  return { npc: r.npc || {}, conversions: r.conversions || [], swaps: r.swaps || {}, names: r.names || {} };
+};
+const readJSON = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+const logLine = msg => { try { fs.appendFileSync(path.join(DATA, 'errors.log'), new Date().toISOString() + ' ' + String(msg).slice(0, 300) + '\n'); } catch { /* fine */ } };
+
+/* One page as text, at most `max` bytes (a longer one is refused, not cut). A refusal (401/403/429) is not asked again
+   at once and never worked around: the caller waits a day. */
+async function getText(url, max) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 60000);
+  try {
+    const res = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://flavbestlol.github.io/flav-toolkit/)', Accept: 'text/html' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const len = Number(res.headers.get('content-length'));
+    if (len > max) throw new Error('page too large');
+    const chunks = []; let size = 0;
+    for await (const c of res.body) { size += c.length; if (size > max) { ctl.abort(); throw new Error('page too large'); } chunks.push(c); }
+    return Buffer.concat(chunks).toString('utf8');
+  } finally { clearTimeout(t); }
+}
+
 /* Downloads everything that is due. progress(step, done, total) reports to the page. */
 async function fetchAll(settings, progress, { force = false } = {}) {
   const now = Date.now();
-  const catFile = path.join(DATA, 'catalogue.json');
   // a2-tracker refused the app a while ago: not asked again until REFUSED_WAIT has passed (the Exchange still prices)
   const off = Tracker.refusedNow(now);
   let tracker = off ? { state: 'refused', since: off.since, why: off.why } : { state: 'ok' };
   const noted = e => { if (e.refused) { Tracker.refused(e.message, now); const t = Tracker.read(); tracker = { state: 'refused', since: t.since, why: t.why }; } else if (tracker.state === 'ok') tracker = { state: 'unreachable', why: e.message }; };
-  let catalogue;
-  if (off && !fs.existsSync(catFile)) throw new Error('The recipe list comes from a2-tracker.com, which refuses Dragon Gear Prices right now (' + off.why + '). Try again later.');
-  if (off || (!force && ageMin(catFile) < 24 * 60)) catalogue = JSON.parse(fs.readFileSync(catFile, 'utf8'));
-  else {
-    progress('Recipe list', 0, 1);
-    try {
-      catalogue = await getJSON(SITE + '/api.crafting.ashx?locale=en-US');
-      if (!Array.isArray(catalogue.recipes) || !catalogue.items) throw new Error('recipe list looks wrong');
-      fs.writeFileSync(catFile, JSON.stringify(catalogue));
-    } catch (e) {
-      if (e.refused) noted(e);
-      if (!fs.existsSync(catFile)) throw e;
-      catalogue = JSON.parse(fs.readFileSync(catFile, 'utf8'));
-    }
-  }
+  const catalogue = await loadRecipes({ off, force, now, progress, noted });
   progress('Market prices', 0, 1);
   await FX.update(DATA);
   // a2-tracker's hourly quotes. Without them the app still prices from the Exchange as the game showed it
@@ -284,6 +351,7 @@ function computeState(data, settings, market = null) {
   }
   return {
     generatedAt: new Date(now).toISOString(), asOf: data.quotesBody.asOf, delaySeconds: data.quotesBody.delaySeconds || 300,
+    recipes: recipeSource(data),
     settings: { serverName: settings.server_name, money: FX.money(settings, DATA), manualRate, cheapPct: settings.cheap_when_below_usual_percent, expensivePct: settings.expensive_when_above_usual_percent, historyDays: settings.history_days },
     rate: { qunaPer10m, chests: chestRates, source: manualRate ? 'manual' : chestRates[0] && chestRates[0].source === 'exchange' ? 'exchange' : 'market' },
     market: market ? market.status() : null,
@@ -346,7 +414,7 @@ function leveling(data, settings, profession, ranges) {
 
 /* Item icons: the game's own, kept on this PC. First from the official AION 2 CDN (the one the official site uses for
    worn gear); it lacks some (the Dragon armor, Wrathful materials, the Kina Chests), so those come from a2-tracker's copy
-   of the same game icon. Quna isn't an item: its icon is a2-tracker's copy of the game's Quna crystal. A drawn mark only
+   of the same game icon, or MetaBot.GG's for items from its recipe list (whose icon names the CDN can't be asked by). Quna isn't an item: its icon is a2-tracker's copy of the game's Quna crystal. A drawn mark only
    if neither has it. */
 const CDN = 'https://assets.playnccdn.com/static-aion2-gamedata/resources/';
 const ICONS_OFFICIAL = path.join(DATA, 'icons-official');
@@ -376,7 +444,21 @@ async function iconFile(data, id) {
       } catch { /* try the copy */ }
     }
   }
-  return (await trackerCopy(it.icon)) || { svg: markSvg(grade) };
+  return (await trackerCopy(it.icon)) || (await metabotCopy(it.icon)) || { svg: markSvg(it.grade && GRADE[it.grade] || grade) };
+}
+// MetaBot.GG's copy of a game icon (webp), kept in data\icons, for items from its recipe list.
+async function metabotCopy(icon) {
+  if (typeof icon !== 'string' || !/^\/web\/aion2\/items\/[a-z0-9_]+\.webp$/.test(icon)) return null;
+  const file = path.join(ICONS, 'mb-' + path.basename(icon));
+  if (fs.existsSync(file)) return { file, type: 'image/webp' };
+  try {
+    const res = await fetch(MetaBot.ORIGIN + icon, { headers: { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://flavbestlol.github.io/flav-toolkit/)' } });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > 2e6 || buf.slice(0, 4).toString() !== 'RIFF') return null;
+    fs.writeFileSync(file, buf);
+    return { file, type: 'image/webp' };
+  } catch { return null; }
 }
 // a2-tracker's copy of a game icon (webp), kept in data\icons.
 async function trackerCopy(icon) {
@@ -739,6 +821,7 @@ function shopping(data, settings, market = null, inventory = null) {
   const unpriced = buyList.filter(b => b.cost == null && !b.owned).length;
   return {
     at: new Date(now).toISOString(), sel, ticks: shop.ticks || {},
+    recipes: recipeSource(data),
     market: market ? market.status() : null,
     inventory: inventory ? { ...inventory.status(), used: useInv, use_inventory: shop.use_inventory !== false } : null,
     pieces: pieces.map(p => ({ slot: p.slot, label: p.label, icon: p.icon, item: p.item, have: p.have, owns: p.owns, full: p.full, goal: p.goal, ok: p.ok, kina: p.kina })),

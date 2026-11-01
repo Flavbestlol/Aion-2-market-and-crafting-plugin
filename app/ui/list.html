@@ -186,6 +186,8 @@ function priceSource(m) {
   if (L && L.tracker && L.tracker.state && L.tracker.state !== 'ok') return 'no prices yet · open the Exchange in game (a2-tracker\'s hourly prices aren\'t available)';
   return 'a2-tracker prices (hourly) · start the game with Play in Flav-Toolkit for the Exchange\'s own';
 }
+// Where the recipes come from. MetaBot.GG's data is reused on its terms: its name with a plain link to its page.
+const recipeSource = r => (r && r.name === 'MetaBot.GG' && /^https:\/\/metabot\.gg\//.test(r.page) ? ' · recipes from <a href="' + esc(r.page) + '" target="_blank">MetaBot.GG</a>' : '');
 // Whether the bag, storage and warehouse were read (Flav-Toolkit), and the Kina in hand.
 const inventorySource = inv => (inv && inv.fresh ? ' · <span class="live">bag read</span>' + (inv.kina != null ? ' · ' + kfmt(inv.kina) + ' Kina in hand' : '') : '');
 const liveTag = b => (b.source === 'ladder' ? '<span class="tag ex" title="From the Exchange\'s own list: the cheapest listings that cover this many">' + (b.exact ? 'exact' : 'list') + '</span>' : b.source === 'summary' ? '<span class="tag lv" title="The cheapest listing the game saw on the Exchange">live</span>' : '');
@@ -227,7 +229,7 @@ function render() {
     post({ sel: s.length ? s : [c.dataset.s] });
   };
   const ch = L.chosen, total = L.totalKina;
-  $('sum').innerHTML = L.pieces.length ? (ch.length === 1 ? esc(ch[0].label) + ' (' + (ch[0].have ? 'T' + ch[0].have : 'nothing') + ' → T' + ch[0].goal + ')' : ch.length + ' pieces') + ' · materials <b>' + kfmt(total) + ' Kina</b>' + (L.kina && L.kina.need ? ' · you pay <b>' + esc(cash(L.kina.money)) + '</b> in Quna packs' : ' ≈ <b>' + esc(cash(toMoney(total))) + '</b>') + '<div class="src">' + priceSource(L.market) + inventorySource(L.inventory) + '</div>' : 'Nothing to craft in your plan.';
+  $('sum').innerHTML = L.pieces.length ? (ch.length === 1 ? esc(ch[0].label) + ' (' + (ch[0].have ? 'T' + ch[0].have : 'nothing') + ' → T' + ch[0].goal + ')' : ch.length + ' pieces') + ' · materials <b>' + kfmt(total) + ' Kina</b>' + (L.kina && L.kina.need ? ' · you pay <b>' + esc(cash(L.kina.money)) + '</b> in Quna packs' : ' ≈ <b>' + esc(cash(toMoney(total))) + '</b>') + '<div class="src">' + priceSource(L.market) + inventorySource(L.inventory) + recipeSource(L.recipes) + '</div>' : 'Nothing to craft in your plan.';
   for (const b of document.querySelectorAll('.tab')) b.classList.toggle('on', b.dataset.v === view);
   let h = '', done = 0, all = 0;
   if (L.kina && L.kina.need) { all++; if (ticks['k:' + Math.round(L.kina.need / 1e6)]) done++; }

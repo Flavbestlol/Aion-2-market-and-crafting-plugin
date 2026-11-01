@@ -256,7 +256,7 @@
       const some = L.unpriced > 0;
       $("sum").replaceChildren(h("span", { text: one ? `${one.label} · ${one.full ? "whole recipe " : ""}T${one.have} → T${one.goal}` : `${ch.length} pieces` }), whole,
         h("span", { class: "r", title: some ? `${L.unpriced} item${L.unpriced === 1 ? " has" : "s have"} no price yet: open ${L.unpriced === 1 ? "it" : "them"} on the Exchange in game` : "" }, b(`${kfmt(L.totalKina)}${some ? "+" : ""} Kina`), side(toMoney(L.totalKina))));
-      $("src").replaceChildren(...priceSource(L.market), ...inventorySource(L.inventory));
+      $("src").replaceChildren(...priceSource(L.market), ...inventorySource(L.inventory), ...recipeSource(L.recipes));
 
       const k = L.kina;
       const kk = k && k.need ? `k:${Math.round(k.need / 1e6)}` : null;
@@ -311,15 +311,15 @@
           const total = p.steps.reduce((t, s) => t + s.cost, 0);
           rows.push(h("div", { class: "piece" }, pic(p.icon),
             h("div", { class: "mid" }, h("div", { text: p.label }), h("div", { class: "sb", text: `T${p.have} → T${p.goal} · ${p.steps.length} steps` })),
-            h("div", { class: "rt" }, h("div", {}, ...kina(total)), h("small", { class: "usd", text: cash(toMoney(total), 0) }))));
-          let run = 0;
+            h("div", { class: "rt" }, h("div", {}, ...(p.steps.some(unpricedStep) ? [h("b", { text: kfmt(total) + "+" }), h("small", { text: " Kina" })] : kina(total))), h("small", { class: "usd", text: cash(toMoney(total), 0) }))));
+          let run = 0, runOpen = false;
           p.steps.forEach((st, n) => {
-            run += st.cost;
+            run += st.cost; runOpen = runOpen || unpricedStep(st);
             const key = stepKey(p, n);
             const on = tick(key, !!st.covered);
             rows.push(stepCard({ key, no: String(n + 1), on, icon: st.icon, tier: st.tier, last: n === p.steps.length - 1,
               title: stepTitle(st), meta: stepMeta(st), cob: craftOrBuy(st), ins: inputs(st.covered ? [] : st.rows), details: () => stepDetails(st),
-              cost: [h("span", {}, h("span", { text: "This step " }), b(`${kfmt(st.cost)} Kina`), side(toMoney(st.cost))), h("span", { text: `so far ${kfmt(run)} Kina` })] }));
+              cost: stepCost(st, run, runOpen) }));
           });
         }
       }
@@ -387,6 +387,16 @@
 
   // Where the prices come from: the Exchange as the game saw it (Flav-Toolkit reads it while you play), else a2-tracker.
   const inventorySource = (inv) => (inv && inv.fresh ? [h("span", { text: " · " }), h("span", { class: "live", text: "bag read" }), h("span", { text: inv.kina != null ? ` · ${kfmt(inv.kina)} Kina` : "" })] : []);
+  // A step's cost line: "no price yet" when none of what it buys has a price, a "+" when some of it has none.
+  const unpricedStep = (st) => !st.covered && (st.rows || []).some((r) => r.cost == null);
+  const stepCost = (st, run, runOpen) => {
+    const open = unpricedStep(st);
+    const now = open && !st.cost ? [h("span", { text: "This step " }), h("span", { class: "dim", text: "no price yet" })]
+      : [h("span", { text: "This step " }), b(`${kfmt(st.cost)}${open ? "+" : ""} Kina`), side(toMoney(st.cost))];
+    return [h("span", {}, ...now), h("span", { text: runOpen && !run ? "so far no price yet" : `so far ${kfmt(run)}${runOpen ? "+" : ""} Kina` })];
+  };
+  // Where the recipes come from: MetaBot.GG's name here (the overlay opens no web pages); its link is on the app's page.
+  const recipeSource = (r) => (r && r.name === "MetaBot.GG" ? [h("span", { text: " · recipes from MetaBot.GG", title: "The recipe list comes from MetaBot.GG (metabot.gg), which reads the game client's recipe tables. a2-tracker.com doesn't give it to Dragon Gear right now. The link is on the app's own page." })] : []);
   const priceSource = (m) => (m && m.live
     ? [h("span", { class: "live", text: "Exchange prices" }), h("span", { text: ` · seen ${m.ageMin == null || m.ageMin < 1 ? "just now" : `${m.ageMin} min ago`}${m.ladders ? ` · ${m.ladders} list${m.ladders === 1 ? "" : "s"} opened` : ""}` })]
     : m && m.kept ? [h("span", { text: `Exchange prices from ${ageShort(m.kept.ageMin)} ago · open the Exchange in game for today's` })]
@@ -944,10 +954,10 @@
         ins: capChips(k), cost: null, details: () => kinaDetails(k) }));
     } else {
       const st = t.st;
-      const run = t.p.steps.slice(0, t.n + 1).reduce((s, x) => s + x.cost, 0);
+      const upTo = t.p.steps.slice(0, t.n + 1), run = upTo.reduce((s, x) => s + x.cost, 0);
       rows.push(stepCard({ key: t.key, no: String(t.n + 1), on: isDone(t), icon: st.icon, tier: st.tier, last: true, forceOpen: true,
         title: stepTitle(st), meta: stepMeta(st), cob: craftOrBuy(st), ins: inputs(st.covered ? [] : st.rows), details: () => stepDetails(st),
-        cost: [h("span", {}, h("span", { text: "This step " }), b(`${kfmt(st.cost)} Kina`), side(toMoney(st.cost))), h("span", { text: `so far ${kfmt(run)} Kina` })] }));
+        cost: stepCost(st, run, upTo.some(unpricedStep)) }));
     }
     rows.push(h("div", { class: "next slim" }, h("div", { class: "bar" }, h("i", { style: `width:${(done / todo.length) * 100}%` })),
       h("div", { class: "foot" }, h("span", { text: `${done} of ${todo.length} done` }), t.st && t.st.covered ? h("span", { class: "done-btn in-hand", text: "In hand ✓" }) : h("button", { type: "button", class: "done-btn", text: ticks[t.key] ? "Undo" : "Done ✓", onclick: () => { peek = 0; change({ tick: t.key }); } }))));
