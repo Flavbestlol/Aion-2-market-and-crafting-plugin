@@ -28,16 +28,17 @@ const recipes = [
     ingredients: [ing(A3, 1, 'Equip'), ing(STONE, 10)] })), // every tier takes an Artisan's piece and stone
 ];
 
-function world({ prices = {}, bag = [], shop = {}, plan = { Gloves: { have: 0, goal: 1 } }, piece = false } = {}) {
+function world({ prices = {}, base = { [LEATHER]: 1000, [STONE]: 100 }, bag = [], shop = {}, plan = { Gloves: { have: 0, goal: 1 } }, piece = false, whole = false } = {}) {
   const now = Date.now();
   const quote = price => ({ status: 'current', price, currency: 'Kinah', marketKind: 'items', observedAt: new Date(now).toISOString(), delaySeconds: 0, listings: 10 });
-  const quotes = new Map(Object.entries({ [LEATHER]: 1000, [STONE]: 100, ...prices }).map(([id, p]) => [String(id), quote(p)]));
+  const quotes = new Map(Object.entries({ ...base, ...prices }).map(([id, p]) => [String(id), quote(p)]));
   const data = { catalogue: { items, recipes }, quotes, hist: new Map(), chests: {}, fetchedAt: now };
   const settings = { faction: 'elyos', class: 'Ranger', plan, proficiency: {}, currency: 'USD', quna_pack: { quna: 4000, eur: 44.49 },
     shop: { sel: ['Gloves'], ticks: {}, use_inventory: true, kina_have: 0, quna_have: 0, ...shop }, cheap_when_below_usual_percent: 5, expensive_when_above_usual_percent: 5 };
   const inv = new Inventory(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'flav-owned-')), 'inventory.json'));
   inv.take({ type: 'inventory', kind: 'list', at: Math.floor(now / 1000), stacks: bag.map(([item, count], i) => ({ item, count, container: 'bag', slot: i + 1 })) });
   const out = C.shopping(data, settings, null, inv);
+  if (whole) return out;
   return piece ? { ...out.chosen[0], buy: out.buy } : out.chosen[0].steps;
 }
 const stepOf = (steps, id) => steps.find(s => s.id === String(id));
@@ -157,4 +158,45 @@ test('where a piece stops: only the tiers from the one owned to the stop are bou
   // stop at T1 again: the same as the plan the other tests use
   p = world({ plan: { Gloves: { have: 0, goal: 1 } }, piece: true });
   assert.ok(stepOf(p.steps, G[0]) && !stepOf(p.steps, G[1]));
+});
+
+test('no prices at all: every step and material is still there, with no cost', () => {
+  const out = world({ base: {}, whole: true });
+  const p = out.chosen[0];
+  assert.ok(p.steps.length >= 4, `steps without prices: ${p.steps.length}`);
+  const s1 = stepOf(p.steps, A1);
+  near(s1.makes, 16, 'Splendent to make, as with prices');
+  const leather = s1.rows.find(r => r.id === String(LEATHER));
+  near(leather.count, 128, 'leather for its tries');
+  assert.strictEqual(leather.unit, null); assert.strictEqual(leather.cost, null);
+  assert.ok(out.buy.some(b => b.id === String(LEATHER) && b.cost == null), 'leather on the buy list, no price');
+  assert.ok(out.unpriced >= 2, 'the list says what has no price yet');
+  assert.strictEqual(p.ok, false);
+});
+
+test('one material unpriced: the priced ones keep their cost, the plan keeps its steps', () => {
+  const out = world({ base: { [LEATHER]: 1000 }, whole: true });
+  const p = out.chosen[0];
+  near(stepOf(p.steps, A1).makes, 16, 'Splendent to make');
+  const stone = out.buy.find(b => b.id === String(STONE)), leather = out.buy.find(b => b.id === String(LEATHER));
+  assert.strictEqual(stone.cost, null);
+  assert.ok(leather.cost > 0);
+  assert.strictEqual(out.totalKina, leather.cost, 'the total is what is priced ("at least")');
+});
+
+test('with every price known, nothing changes: costs as before', () => {
+  const steps = world();
+  assert.ok(steps.every(s => s.cost != null));
+});
+
+test('"From T1": a piece crafted to its stop shows its whole recipe, whatever is owned', () => {
+  // T1 worn and the Splendent gloves in the bag: the plan has nothing left to do for it
+  const done = world({ plan: { Gloves: { have: 1, goal: 1 } }, whole: true });
+  assert.strictEqual(done.chosen.length, 0, 'done: not on the list');
+  const out = world({ plan: { Gloves: { have: 1, goal: 1 } }, bag: [[A1, 10], [LEATHER, 50]], shop: { full: { Gloves: true } }, whole: true });
+  const p = out.chosen[0];
+  assert.strictEqual(p.full, true); assert.strictEqual(p.have, 0); assert.strictEqual(p.owns, 1);
+  near(stepOf(p.steps, A1).makes, 16, 'all 16 Splendent: the bag does not count');
+  assert.strictEqual(stepOf(p.steps, A1).owned, undefined);
+  near(out.buy.find(b => b.id === String(LEATHER)).missing, 128, 'every leather to buy: what is in the bag is not taken off');
 });

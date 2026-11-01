@@ -5,8 +5,11 @@
      market-summary   the cheapest listing and the number of listings for every item (when the Exchange opens)
      market-listings  one page of an item's listings, as the player browses it (the real price ladder)
      item-stats       the 28-day statistics shown in the purchase dialog
-   This keeps the latest of each, answers price questions from them while they are fresh, and saves them so a restart
-   keeps what was seen. Anything older than MAX_AGE is ignored and the app falls back to a2-tracker's hourly data.
+   This keeps the latest of each, answers price questions from them, and saves them so a restart keeps what was seen.
+   A price seen within FRESH_MS is the Exchange now ("live"); an older one, up to KEEP_MS, is still the last price the
+   game showed and is used as one, with its age (a2-tracker's hourly data, which used to take over, refuses the app
+   since 2026-10-30). An item's own list (the ladder: exact, whole listings) counts only while fresh: its listings
+   come and go.
 
    Two things the game does, seen 2026-10-23: it uses one "server id" per market — 11304 for the Kina Exchange (624
    items when it opens) and 1304 for the Quna Exchange (the three Kina Chests) — and it sends a summary for the whole
@@ -16,7 +19,9 @@
 
 const fs = require('fs');
 
-const MAX_AGE_MS = 45 * 60 * 1000;   // the Exchange moves; after this, the public hourly data is as good
+const FRESH_MS = 45 * 60 * 1000;          // the Exchange moves: within this, a price is the Exchange now
+const KEEP_MS = 14 * 24 * 60 * 60 * 1000;  // older prices are still the last the game showed, used with their age
+const MAX_AGE_MS = FRESH_MS;               // (the old name, for code that means "fresh")
 const PAGE_SIZE = 100;               // the game's page size; a complete ladder has every page up to has_next_page=false
 
 class Market {
@@ -88,19 +93,26 @@ class Market {
     return event.type.replace('market-', '').replace('item-', '');
   }
 
-  /* The cheapest listing seen for an item in a currency, or null if nothing fresh: { price, count, at, source }.
-     A fresh ladder beats the summary (it is newer and exact); the summary covers every item of its market. */
+  /* The cheapest listing seen for an item in a currency, or null if none was seen within KEEP_MS:
+     { price, count, at, source, ageMin }. A fresh ladder beats the summary (it is newer and exact); the summary covers
+     every item of its market. `source` is 'ladder' or 'summary' while fresh, 'seen' for an older price (the newest
+     the game showed, from a summary or a list). */
   min(item, currency = 'kina', now = Date.now()) {
     const l = this.ladder(item, currency, now);
-    if (l && l.listings.length) return { price: l.listings[0].unit, count: l.listings.length, at: l.at, source: 'ladder' };
+    const age = at => Math.max(0, Math.round((now - at) / 60000));
+    if (l && l.listings.length) return { price: l.listings[0].unit, count: l.listings.length, at: l.at, source: 'ladder', ageMin: age(l.at) };
     if (l && l.complete && !l.listings.length) return null; // browsed and empty: no listing, no price
     let best = null;
     for (const [server, rows] of this.summaries) {
       if (this.marketOf(server) !== currency) continue;
       const r = rows.get(String(item));
-      if (r && now - r.at <= MAX_AGE_MS && (!best || r.at > best.at)) best = { price: r.min, count: r.count, at: r.at, source: 'summary' };
+      if (r && now - r.at <= KEEP_MS && (!best || r.at > best.at)) best = { price: r.min, count: r.count, at: r.at };
     }
-    return best;
+    // an item's list seen too long ago for its listings, but newer than any summary: its cheapest listing then
+    const old = this.ladders.get(String(item) + ':' + currency);
+    if (old && old.listings.length && now - old.at <= KEEP_MS && (!best || old.at > best.at)) best = { price: old.listings[0].unit, count: old.listings.length, at: old.at };
+    if (!best) return null;
+    return { ...best, source: now - best.at <= FRESH_MS ? 'summary' : 'seen', ageMin: age(best.at) };
   }
 
   /* Which market a server id is: learned from listings, else guessed from the size of its summary. */
@@ -115,7 +127,7 @@ class Market {
      from the first (the cheapest listings are on page 1), or every page of any order. */
   ladder(item, currency = 'kina', now = Date.now()) {
     const l = this.ladders.get(String(item) + ':' + currency);
-    if (!l || now - l.at > MAX_AGE_MS) return null;
+    if (!l || now - l.at > FRESH_MS) return null;
     if (!l.complete && !(/^UnitPrice ASC$/i.test(l.sort) && l.pages.has(1))) return null;
     return l;
   }
@@ -153,13 +165,18 @@ class Market {
 
   /* For the page: when the Exchange was last seen and how much of it. */
   status(now = Date.now()) {
-    const fresh = [...this.ladders.values()].filter(l => now - l.at <= MAX_AGE_MS);
-    let items = 0, summaryAt = 0;
-    for (const rows of this.summaries.values()) for (const r of rows.values()) if (now - r.at <= MAX_AGE_MS) { items++; summaryAt = Math.max(summaryAt, r.at); }
+    const fresh = [...this.ladders.values()].filter(l => now - l.at <= FRESH_MS);
+    let items = 0, summaryAt = 0, kept = 0, keptAt = 0;
+    for (const rows of this.summaries.values()) for (const r of rows.values()) {
+      if (now - r.at <= FRESH_MS) { items++; summaryAt = Math.max(summaryAt, r.at); }
+      else if (now - r.at <= KEEP_MS) { kept++; keptAt = Math.max(keptAt, r.at); }
+    }
     const last = Math.max(summaryAt, ...[...this.ladders.values()].map(l => l.at), ...[...this.stats.values()].map(s => s.at), 0);
     return {
       live: !!(items || fresh.length),
       summary: items ? { at: new Date(summaryAt).toISOString(), items } : null,
+      // not live, but older prices the game showed are still used, with their age ("seen 2 h ago")
+      kept: !items && kept ? { at: new Date(keptAt).toISOString(), items: kept, ageMin: Math.round((now - keptAt) / 60000) } : null,
       ladders: fresh.length, updates: this.updates,
       lastAt: last ? new Date(last).toISOString() : null, ageMin: last ? Math.round((now - last) / 60000) : null,
     };
@@ -229,4 +246,4 @@ function currencyOf(c) {
   return 'other';
 }
 
-module.exports = { Market, coverCheapest, MAX_AGE_MS, PAGE_SIZE };
+module.exports = { Market, coverCheapest, MAX_AGE_MS, FRESH_MS, KEEP_MS, PAGE_SIZE };

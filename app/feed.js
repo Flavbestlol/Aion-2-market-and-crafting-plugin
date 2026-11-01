@@ -28,6 +28,8 @@ const TYPES = ['market-summary', 'market-listings', 'item-stats', 'inventory', '
 const LOOK_MS = 3000;     // how often feed.json is looked for while not connected
 const HOLD_MS = 30000;    // after a refusal (wrong version, unknown type): wait before trying again
 const BEAT_MS = 2000;
+const CONNECT_MS = 10000; // a handshake that hasn't finished by then is given up and tried again
+const SILENT_MS = 10000;  // the core sends its status every 2 s: this long without a word, the connection is dead
 const FEATURES = ['lock', 'hotkeys', 'settings', 'help']; // what this add-on understands beyond events (an older core ignores it)
 
 const feedFile = () => process.env.FLAV_FEED_FILE || path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'com.flavbest.flav-toolkit', 'feed.json');
@@ -56,7 +58,8 @@ class Feed {
   }
 
   tick() {
-    if (this.sock || Date.now() < this.holdUntil) return;
+    if (this.sock) { this.watch(); return; }
+    if (Date.now() < this.holdUntil) return;
     const info = this.read();
     if (!info) { if (this.state !== 'disconnected') this.state = 'waiting'; return; }
     this.connect(info);
@@ -75,11 +78,29 @@ class Feed {
     if (typeof WebSocket !== 'function') { this.state = 'this Node has no WebSocket client'; return; }
     let ws;
     try { ws = new WebSocket('ws://127.0.0.1:' + info.port + '/feed?token=' + encodeURIComponent(info.token)); } catch { this.state = 'cannot connect'; return; }
-    this.sock = ws; this.state = 'connecting';
-    ws.addEventListener('open', () => this.send({ op: 'hello', addon: ID, version: this.version, events: 1, types: TYPES, features: FEATURES }));
-    ws.addEventListener('message', m => this.take(typeof m.data === 'string' ? m.data : String(m.data)));
-    ws.addEventListener('close', () => this.drop());
-    ws.addEventListener('error', () => this.drop());
+    this.sock = ws; this.state = 'connecting'; this.info = info; this.heardAt = Date.now();
+    // every listener checks it is still the current socket: a dead connection's late close must not end the new one
+    ws.addEventListener('open', () => { if (this.sock === ws) this.send({ op: 'hello', addon: ID, version: this.version, events: 1, types: TYPES, features: FEATURES }); });
+    ws.addEventListener('message', m => { if (this.sock === ws) { this.heardAt = Date.now(); this.take(typeof m.data === 'string' ? m.data : String(m.data)); } });
+    ws.addEventListener('close', () => { if (this.sock === ws) this.drop(); });
+    ws.addEventListener('error', () => { if (this.sock === ws) this.drop(); });
+  }
+
+  /* While a socket is held: give it up when the core went away without closing it, so the next look finds the core
+     that runs now (ADDONS.md section 4, Reconnect): a handshake not done in CONNECT_MS, no word from the core for
+     SILENT_MS (it sends its status every 2 s), or a feed.json naming another port or token (the core restarted, for
+     an update say, and the old connection never said it closed). */
+  watch(now = Date.now()) {
+    const info = this.read();
+    const moved = !!(info && this.info && (info.port !== this.info.port || info.token !== this.info.token));
+    const stuck = this.state === 'connecting' && now - this.heardAt > CONNECT_MS;
+    const silent = this.state === 'connected' && now - this.heardAt > SILENT_MS;
+    if (!moved && !stuck && !silent) return false;
+    const ws = this.sock;
+    this.drop();
+    try { ws.close(); } catch { /* already gone */ }
+    if (moved) this.tick(); // the new core is there now: hello at once
+    return true;
   }
 
   take(text) {

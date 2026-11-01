@@ -551,3 +551,8 @@ body.setting .tabs button[aria-selected="true"] { color: var(--mute); }
 @keyframes cshine { to { letter-spacing: 0.09em; text-shadow: 0 0 18px #fff2c8, 0 0 34px rgba(242, 195, 91, 0.9); } }
 @media (prefers-reduced-motion: reduce) { .crow, .crow .cn, .cban, .cban .bt { animation: none !important; } .cfx, .craftrain { display: none; } }
 body.folded #craft { margin: 8px 8px 6px; }
+/* "From T1" beside one piece's name (its whole recipe) and "Recipe" on a done piece in the Gear tab */
+.whole, .recipe { flex: none; margin-left: 6px; padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(255, 214, 140, 0.35); background: transparent; color: var(--mute); font: 600 10.5px var(--num); cursor: pointer; }
+.whole:hover, .recipe:hover { color: var(--ink); border-color: rgba(255, 214, 140, 0.7); }
+.whole.on { color: #1b1406; background: #e8c07a; border-color: #e8c07a; }
+.recipe { margin: 3px 0 0; }

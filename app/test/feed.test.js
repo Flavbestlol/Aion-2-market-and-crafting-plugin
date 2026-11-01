@@ -138,3 +138,71 @@ test('"Find out why" asks the hub for the Exchange checks only when help was gra
   assert.deepStrictEqual(sent, [{ op: 'help', about: 'exchange' }, { op: 'help' }]);
   f.close();
 });
+
+// A stand-in WebSocket: records each socket and lets the test fire its events.
+function fakeSockets() {
+  const made = [];
+  class FakeWS {
+    constructor(url) { this.url = url; this.readyState = 0; this.on = {}; this.sent = []; this.closed = false; made.push(this); }
+    addEventListener(k, fn) { (this.on[k] = this.on[k] || []).push(fn); }
+    fire(k, data) { for (const fn of this.on[k] || []) fn(data); }
+    send(t) { this.sent.push(JSON.parse(t)); }
+    close() { this.closed = true; }
+  }
+  return { FakeWS, made };
+}
+function withFeedFile(content) {
+  const file = path.join(fs.mkdtempSync(path.join(require('os').tmpdir(), 'flav-feed-')), 'feed.json');
+  if (content) fs.writeFileSync(file, JSON.stringify(content));
+  return file;
+}
+
+test('after the core restarts the app says hello to the new one, whatever the old connection did', () => {
+  const { FakeWS, made } = fakeSockets();
+  const was = globalThis.WebSocket, wasFile = process.env.FLAV_FEED_FILE;
+  globalThis.WebSocket = FakeWS;
+  const file = withFeedFile({ feed: 1, port: 7316, token: 'old' });
+  process.env.FLAV_FEED_FILE = file;
+  try {
+    const f = new Feed({ version: '9.9.9' });
+    assert.strictEqual(made.length, 1);
+    const a = made[0]; a.readyState = 1; a.fire('open');
+    a.fire('message', { data: JSON.stringify({ op: 'welcome', core: 'old', events: 1 }) });
+    assert.strictEqual(f.state, 'connected');
+    // the core is replaced (an update): a new feed.json, and the old socket never said it closed
+    fs.writeFileSync(file, JSON.stringify({ feed: 1, port: 7400, token: 'new' }));
+    assert.strictEqual(f.watch(), true, 'another port and token: the old connection is given up');
+    assert.strictEqual(made.length, 2, 'and the new core is asked at once');
+    assert.ok(a.closed);
+    const b = made[1]; assert.match(b.url, /:7400\/feed\?token=new$/);
+    b.readyState = 1; b.fire('open');
+    assert.deepStrictEqual(b.sent[0].op, 'hello');
+    // the old socket's close comes late: it must not end the new connection
+    a.fire('close'); a.fire('error');
+    assert.strictEqual(f.sock, b);
+    b.fire('message', { data: JSON.stringify({ op: 'welcome', core: 'new', events: 1 }) });
+    assert.strictEqual(f.state, 'connected');
+    f.close();
+  } finally { globalThis.WebSocket = was; process.env.FLAV_FEED_FILE = wasFile; }
+});
+
+test('a connection that goes silent, or a handshake that never ends, is given up and tried again', () => {
+  const { FakeWS, made } = fakeSockets();
+  const was = globalThis.WebSocket, wasFile = process.env.FLAV_FEED_FILE;
+  globalThis.WebSocket = FakeWS;
+  process.env.FLAV_FEED_FILE = withFeedFile({ feed: 1, port: 7316, token: 't' });
+  try {
+    const f = new Feed({ version: '9.9.9' });
+    const a = made[0];
+    assert.strictEqual(f.watch(Date.now() + 5000), false, 'still connecting: wait');
+    assert.strictEqual(f.watch(Date.now() + 11000), true, 'a handshake past 10 s is given up');
+    assert.strictEqual(f.sock, null); assert.ok(a.closed);
+    f.tick();
+    const b = made[1]; b.readyState = 1; b.fire('open');
+    b.fire('message', { data: JSON.stringify({ op: 'welcome', core: 'x', events: 1 }) });
+    assert.strictEqual(f.watch(Date.now() + 5000), false, 'heard within 10 s: kept');
+    assert.strictEqual(f.watch(Date.now() + 11000), true, 'silent for 10 s: given up');
+    assert.strictEqual(f.state, 'disconnected');
+    f.close();
+  } finally { globalThis.WebSocket = was; process.env.FLAV_FEED_FILE = wasFile; }
+});

@@ -60,7 +60,8 @@ It keeps itself up to date: when you buy, craft or move something, or open an it
 - **How to get the Kina**: how many Quna packs, then which Kina Chests (10M, 2M, 400k) to buy at or under the prices it shows.
 - **What you already have** is taken off: your bag, storage and warehouse are read from the game, and a line they cover is marked *covered*. Kina in hand counts too.
 - **Several pieces at once**: Ctrl+click to add one, or *All* for the whole set.
-- **A verdict on every line**: pricey (better to wait), fair or cheap, against the usual price.
+- **A verdict on every line**: pricey (better to wait), fair or cheap, against the usual price (the game's own 7-day average from the purchase dialog, a2-tracker's history otherwise).
+- **Old prices are kept, with their age.** A price seen on the Exchange stays on its line after it stops being live, marked *seen 2 h ago*, until you open the Exchange again. An item never seen yet says *no price yet*, and the total gets a **+**.
 
 ### Every craft, in order
 
@@ -68,7 +69,8 @@ It keeps itself up to date: when you buy, craft or move something, or open an it
   <img src="docs/steps.gif" alt="The Steps tab: buy some, craft the rest, copy a name, tick a step" width="640">
 </p>
 
-- **Step by step**: get the Kina, then each craft in order with its cost, its tries and its materials.
+- **Step by step**: get the Kina, then each craft in order with its cost, its tries and its materials, priced or not: a missing price never hides a step.
+- **The whole recipe from T1.** *From T1* on the Steps tab (or *Recipe* on a finished piece in the Gear tab) shows every step and material from the start, whatever you own or wear: to craft it again, or for another character. Click it again to go back to your plan.
 - **Buy some, craft the rest.** When some listings on the Market are cheaper than crafting one more, the step says how many to buy, up to what price, how many to craft and what it saves.
 - **Craft it myself.** When the gold Artisan's piece is cheaper to buy than to craft, the plan buys it and says so, with both prices. One click on *Craft it myself* puts its green, blue and gold steps back on the list, with how many of each.
 - **What you already made counts.** Crafted items in your bag (10 of the 18 Splendent gloves, made before a break) come off their step: fewer to make, fewer tries, and the next step says they're in hand. A step you have all of is done by itself.
@@ -149,6 +151,12 @@ Here is exactly what it does:
 <summary><b>The panel says prices are not live from the Market</b></summary>
 
 Start AION 2 with **Play AION 2** in Flav-Toolkit (not from the launcher alone), then open the Exchange in game. For exact buys, open the item's own list on the Exchange.
+</details>
+
+<details>
+<summary><b>The panel stopped updating after Flav-Toolkit restarted</b></summary>
+
+It reconnects by itself within about 10 seconds (Flav-Toolkit 0.7.0 or later). If it doesn't, close and open the add-on from the hub, and [open an issue](../../issues).
 </details>
 
 <details>
