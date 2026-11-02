@@ -4,6 +4,7 @@
    answers kept 10 minutes, and 10 minutes of silence after the site says "too many" (403/429)).
    Only the character name and server are sent, only to the official site. */
 const SERVERS = require('./servers.json'); // from Flav-Toolkit (eiruuru/aion2-char-sheet, GPL-3.0)
+const Net = require('./net'); // listed hosts only, no redirect to another host, bounded reads
 
 const SEARCH = 'https://api-search.plaync.com/aion2global/search/v2/character';
 const INFO = 'https://aion2.plaync.com/api/character/info';
@@ -26,11 +27,7 @@ function get(url) {
     if (Date.now() < heldUntil) throw new Error('The official site asked us to slow down; trying again in ' + Math.ceil((heldUntil - Date.now()) / 60000) + ' min.');
     const wait = last + GAP - Date.now(); if (wait > 0) await sleep(wait);
     last = Date.now();
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 20000);
-    let res;
-    try {
-      res = await fetch(url, { signal: ctl.signal, headers: HEADERS });
-    } finally { clearTimeout(t); }
+    const res = await Net.get(url, { headers: HEADERS, timeoutMs: 20000, max: 4 * 1024 * 1024 });
     if (res.status === 403 || res.status === 429) { heldUntil = Date.now() + HOLD; throw new Error('The official site asked us to slow down; trying again in 10 min.'); }
     if (res.status === 404) throw new Error('Character not found on that server.');
     if (!res.ok) throw new Error('The official site answered ' + res.status + '.');

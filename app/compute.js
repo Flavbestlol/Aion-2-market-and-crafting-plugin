@@ -5,6 +5,7 @@ const fs = require('fs'), path = require('path');
 const { createEngine } = require('./engine');
 const FX = require('./fx');
 const MetaBot = require('./metabot');
+const Net = require('./net'); // every web request: listed hosts only, no redirect to another host, bounded reads
 
 const ROOT = path.resolve(__dirname, '..');
 const DATA = process.env.DRAGON_GEAR_DATA ? path.resolve(process.env.DRAGON_GEAR_DATA) : path.join(ROOT, 'data'); // the tests point it at a temporary folder
@@ -85,18 +86,16 @@ async function getJSON(url, tries = 4) {
   let wait = 1500;
   for (let i = 1; ; i++) {
     try {
-      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 60000);
-      const res = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': 'FlavGearPrices/2.0 (personal price checker)', Accept: 'application/json' } });
-      clearTimeout(t);
+      const res = await Net.get(url, { headers: { 'User-Agent': 'FlavGearPrices/2.0 (personal price checker)', Accept: 'application/json' }, timeoutMs: 60000, max: 32 * 1024 * 1024 });
       if (res.status === 401 || res.status === 403) {
         // a refusal is the site's decision: never asked again at once, never worked around
         let why = '';
-        try { const b = await res.json(); if (b && typeof b.error === 'string') why = ' ' + b.error.slice(0, 40); } catch { /* no body */ }
+        try { const b = res.json(); if (b && typeof b.error === 'string') why = ' ' + b.error.slice(0, 40); } catch { /* no body */ }
         const e = new Error('HTTP ' + res.status + why); e.refused = true; throw e;
       }
       if (res.status === 429 || res.status >= 500) throw new Error('HTTP ' + res.status);
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const body = await res.json();
+      const body = res.json();
       if (!body || body.ok !== true) throw new Error('unexpected answer');
       return body;
     } catch (e) {
@@ -205,19 +204,12 @@ const shippedExtras = () => {
 const readJSON = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const logLine = msg => { try { fs.appendFileSync(path.join(DATA, 'errors.log'), new Date().toISOString() + ' ' + String(msg).slice(0, 300) + '\n'); } catch { /* fine */ } };
 
-/* One page as text, at most `max` bytes (a longer one is refused, not cut). A refusal (401/403/429) is not asked again
-   at once and never worked around: the caller waits a day. */
+/* One page as text, at most `max` bytes (a longer one is refused, not cut; net.js reads it in chunks). A refusal
+   (401/403/429) is not asked again at once and never worked around: the caller waits a day. */
 async function getText(url, max) {
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 60000);
-  try {
-    const res = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://flavbestlol.github.io/flav-toolkit/)', Accept: 'text/html' } });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const len = Number(res.headers.get('content-length'));
-    if (len > max) throw new Error('page too large');
-    const chunks = []; let size = 0;
-    for await (const c of res.body) { size += c.length; if (size > max) { ctl.abort(); throw new Error('page too large'); } chunks.push(c); }
-    return Buffer.concat(chunks).toString('utf8');
-  } finally { clearTimeout(t); }
+  const res = await Net.get(url, { headers: { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://flavbestlol.github.io/flav-toolkit/)', Accept: 'text/html' }, max, timeoutMs: 60000 });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.text();
 }
 
 /* Downloads everything that is due. progress(step, done, total) reports to the page. */
@@ -423,6 +415,7 @@ const ALIAS = { Icon_goldnonbinding: 'Icon_gold' }; // Kina: the CDN keeps it un
 const QUNA_ICON = '/assets/img/quna.webp';
 const GRADE = { Common: '#b9b3a4', Rare: '#6fe38a', Legend: '#6fb3ff', Unique: '#f2c35b', Epic: '#c58cff', Mythic: '#ff8a5c' };
 const UA = { 'User-Agent': 'FlavGearPrices/2.0 (personal price checker)' };
+const ICON_MAX = 2e6; // an icon past this is refused while it is read, never kept
 async function iconFile(data, id) {
   if (id === 'quna') return (await trackerCopy(QUNA_ICON)) || { svg: markSvg('#e9a6e6') };
   const it = data && data.catalogue.items[String(id)];
@@ -435,11 +428,11 @@ async function iconFile(data, id) {
     if (fs.existsSync(file)) return { file, type: 'image/png' };
     if (!(fs.existsSync(miss) && ageMin(miss) < 7 * 24 * 60)) {
       try {
-        const res = await fetch(CDN + name + '.png', { headers: UA });
+        const res = await Net.get(CDN + name + '.png', { headers: UA, max: ICON_MAX, timeoutMs: 20000 });
         if (res.status === 404 || res.status === 403) fs.writeFileSync(miss, '');
         else if (res.ok) {
-          const buf = Buffer.from(await res.arrayBuffer());
-          if (buf.length < 2e6 && buf.slice(1, 4).toString() === 'PNG') { fs.writeFileSync(file, buf); return { file, type: 'image/png' }; }
+          const buf = res.body;
+          if (buf.slice(1, 4).toString() === 'PNG') { fs.writeFileSync(file, buf); return { file, type: 'image/png' }; }
         }
       } catch { /* try the copy */ }
     }
@@ -452,10 +445,10 @@ async function metabotCopy(icon) {
   const file = path.join(ICONS, 'mb-' + path.basename(icon));
   if (fs.existsSync(file)) return { file, type: 'image/webp' };
   try {
-    const res = await fetch(MetaBot.ORIGIN + icon, { headers: { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://flavbestlol.github.io/flav-toolkit/)' } });
+    const res = await Net.get(MetaBot.ORIGIN + icon, { headers: { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices (+https://flavbestlol.github.io/flav-toolkit/)' }, max: ICON_MAX, timeoutMs: 20000 });
     if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > 2e6 || buf.slice(0, 4).toString() !== 'RIFF') return null;
+    const buf = res.body;
+    if (buf.slice(0, 4).toString() !== 'RIFF') return null;
     fs.writeFileSync(file, buf);
     return { file, type: 'image/webp' };
   } catch { return null; }
@@ -466,10 +459,10 @@ async function trackerCopy(icon) {
   const file = path.join(ICONS, path.basename(icon));
   if (fs.existsSync(file)) return { file, type: 'image/webp' };
   try {
-    const res = await fetch(SITE + icon, { headers: UA });
+    const res = await Net.get(SITE + icon, { headers: UA, max: ICON_MAX, timeoutMs: 20000 });
     if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > 2e6 || buf.slice(0, 4).toString() !== 'RIFF') return null;
+    const buf = res.body;
+    if (buf.slice(0, 4).toString() !== 'RIFF') return null;
     fs.writeFileSync(file, buf);
     return { file, type: 'image/webp' };
   } catch { return null; }
