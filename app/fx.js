@@ -3,6 +3,7 @@
    Exchange rates: ExchangeRate-API's free open endpoint (open.er-api.com, no key), updated once a day, kept on
    disk for a day as its terms ask. If it can't be reached, the last rates kept are used, then built-in ones. */
 const fs = require('fs'), path = require('path');
+const Net = require('./net'); // listed hosts only, no redirect to another host, bounded reads
 
 const CURRENCIES = {
   USD: { code: 'USD', sym: '$', before: true },
@@ -28,11 +29,9 @@ async function update(dataDir) {
   const due = !kept || Date.now() > Math.min(kept.next || Infinity, kept.at + 24 * 3600e3);
   if (!due) return kept;
   try {
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000);
-    const res = await fetch(URL_EUR, { signal: ctl.signal, headers: { Accept: 'application/json' } });
-    clearTimeout(t);
+    const res = await Net.get(URL_EUR, { headers: { Accept: 'application/json' }, timeoutMs: 15000, max: 1024 * 1024 });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const b = await res.json();
+    const b = res.json();
     const usd = Number(b && b.rates && b.rates.USD), sar = Number(b && b.rates && b.rates.SAR);
     if (b.result !== 'success' || !(usd > 0.5 && usd < 3) || !(sar > 2 && sar < 10)) throw new Error('unexpected answer');
     const c = { at: (Number(b.time_last_update_unix) || Date.now() / 1000) * 1000, next: (Number(b.time_next_update_unix) || 0) * 1000 || null, fetched: Date.now(), source: 'open.er-api.com', rates: { EUR: 1, USD: usd, SAR: sar } };

@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const MetaBot = require('../app/metabot');
+const Net = require('../app/net'); // the app's own rules: listed hosts, no redirect elsewhere, bounded reads
 
 const OUT = path.join(__dirname, '..', 'app', 'recipes-metabot.json');
 
@@ -19,7 +20,7 @@ async function main() {
   const UA = { 'User-Agent': 'Flav-Toolkit Dragon Gear Prices release tool (+https://flavbestlol.github.io/flav-toolkit/)', Accept: 'text/html' };
   const get = async (name, url) => {
     if (dir) return fs.readFileSync(path.join(dir, name), 'utf8');
-    const res = await fetch(url, { headers: UA });
+    const res = await Net.get(url, { headers: UA, max: MetaBot.MAX_PAGE, timeoutMs: 60000 });
     if (!res.ok) throw new Error(url + ': HTTP ' + res.status);
     await new Promise(r => setTimeout(r, 2000));
     return res.text();

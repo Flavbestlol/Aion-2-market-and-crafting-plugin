@@ -15,7 +15,7 @@ test('the lookup sends an honest User-Agent and no Origin or Referer', async () 
       : u.pathname.endsWith('/info')
         ? { profile: { characterName: 'Sampleton', serverId: 1307, serverName: 'Fregion', className: 'Ranger', characterLevel: 40 }, stat: { statList: [] } }
         : { equipment: { equipmentList: [{ slotPosName: 'Helmet', id: 1, name: 'A helm', grade: 'Rare', enchantLevel: 3, icon: 'https://assets.playnccdn.com/x.png' }] } };
-    return { ok: true, status: 200, json: async () => body };
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
   };
   try {
     const r = await Armory.lookup('Sampleton', 1307, { fresh: true });
